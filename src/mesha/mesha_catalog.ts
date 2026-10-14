@@ -1,0 +1,513 @@
+// The Mesha component catalog: every node type a procedural object's JSON may use, in the spirit of
+// Blender's Geometry Nodes (primitives, curves, curve-to-mesh, deformers, instancing). Each entry
+// describes its inputs so a definition can be validated, documented and eventually shown in a node
+// editor, and `build` turns resolved inputs into geometry or a curve.
+
+import { type Mesh, type Vec2, type Vec3, join, setRegion, transformMesh, compose4, recomputeNormals, autoSmoothNormals, mapPositions } from "./mesha_mesh";
+import {
+    roundedBox, lathe, cylinder, capsuleProfile, sphere, icosphere, torus, extrude, sweep,
+    bendY, taperY, twistY, displaceNoise, radialArray, linearArray, mirror, loft,
+} from "./mesha_primitives";
+import {
+    circle2, ellipse2, polygon2, roundedRect2, superellipse2, star2, gear2, filletPolyline, smoothPath,
+    bezier3, helix3, arc3, translate2, rotate2, scale2, resample, subdivideSegments,
+} from "./mesha_curves";
+import { leaf, tree, frond, blades, scatter, distributeOnSurface, stalk, shadeFoliage, LEAF_SHAPES, type LeafShape, type CrownShape } from "./mesha_plants";
+import { buildHuman, DEFAULT_HUMAN, type HumanParams } from "./mesha_human";
+import { POSES } from "./mesha_figure";
+import { TOPS, BOTTOMS, NECKLINES, SHOES } from "./mesha_cloth";
+import { HAIR_STYLES, PARTINGS, BEARDS } from "./mesha_hair";
+
+export type InputKind = "number" | "int" | "bool" | "vec2" | "vec3" | "enum" | "string" | "mesh" | "meshes" | "curve2" | "curves2" | "curve3" | "points3";
+export type OutputKind = "mesh" | "curve2" | "curves2" | "curve3";
+
+export interface ComponentInput {
+    name: string;
+    kind: InputKind;
+    default?: unknown;
+    min?: number;
+    max?: number;
+    options?: string[];
+    description: string;
+}
+
+export interface ComponentDef {
+    type: string;
+    category: "Mesh Primitives" | "Curve Primitives" | "Paths" | "Curve to Mesh" | "Deform" | "Instances" | "Plants" | "Figures" | "Geometry";
+    label: string;
+    description: string;
+    inputs: ComponentInput[];
+    output: OutputKind;
+    build: (i: Record<string, any>) => Mesh | Vec2[] | Vec3[];
+}
+
+const n = (name: string, def: number, description: string, min?: number, max?: number): ComponentInput => ({ name, kind: "number", default: def, min, max, description });
+const int = (name: string, def: number, description: string, min = 1, max = 512): ComponentInput => ({ name, kind: "int", default: def, min, max, description });
+const DEG = Math.PI / 180;
+
+const LIST: ComponentDef[] = [
+    // --- Mesh primitives -----------------------------------------------------------------------
+    {
+        type: "mesh.box", category: "Mesh Primitives", label: "Box", output: "mesh",
+        description: "A box centered on the origin with rounded edges and corners. `radius` 0 is sharp; half the smallest side is a pill.",
+        inputs: [{ name: "size", kind: "vec3", default: [1, 1, 1], description: "Width, height, depth." }, n("radius", 0, "Edge rounding.", 0), int("segments", 3, "Rows per rounded band.", 1, 16), { name: "divisions", kind: "vec3", default: [1, 1, 1], description: "Extra rows across each flat side (give a box to be bent or tapered some)." }],
+        build: i => roundedBox(i.size, i.radius, i.segments, "default", i.divisions),
+    },
+    {
+        type: "mesh.cylinder", category: "Mesh Primitives", label: "Cylinder", output: "mesh",
+        description: "A closed cylinder standing on y = 0 with optional rounded rims.",
+        inputs: [n("radius", 0.5, "Radius.", 0), n("height", 1, "Height.", 0), int("segments", 32, "Sides.", 3), n("bevel", 0, "Rim rounding.", 0), int("bevelSegments", 3, "Rows per rim.", 1, 12)],
+        build: i => cylinder(i.radius, i.height, i.segments, "default", i.bevel, i.bevelSegments),
+    },
+    {
+        type: "mesh.cone", category: "Mesh Primitives", label: "Cone / Frustum", output: "mesh",
+        description: "A closed frustum from `bottomRadius` at y = 0 to `topRadius` at `height` (0 top radius is a cone).",
+        inputs: [n("bottomRadius", 0.5, "Radius at the base.", 0), n("topRadius", 0.25, "Radius at the top.", 0), n("height", 1, "Height.", 0), int("segments", 32, "Sides.", 3), n("bevel", 0, "Rim rounding.", 0)],
+        build: i => lathe(capsuleProfile(i.bottomRadius, i.topRadius, i.height, i.bevel, 3), { segments: i.segments }),
+    },
+    {
+        type: "mesh.sphere", category: "Mesh Primitives", label: "UV Sphere", output: "mesh",
+        description: "A sphere centered on the origin.",
+        inputs: [n("radius", 0.5, "Radius.", 0), int("segments", 32, "Around.", 3), int("rings", 16, "Pole to pole.", 2)],
+        build: i => sphere(i.radius, i.segments, i.rings),
+    },
+    {
+        type: "mesh.icosphere", category: "Mesh Primitives", label: "Ico Sphere", output: "mesh",
+        description: "A sphere of evenly sized triangles, the base for rocks and other displaced organic shapes.",
+        inputs: [n("radius", 0.5, "Radius.", 0), int("subdivisions", 3, "Each level quadruples the triangles.", 0, 6)],
+        build: i => icosphere(i.radius, i.subdivisions),
+    },
+    {
+        type: "mesh.torus", category: "Mesh Primitives", label: "Torus", output: "mesh",
+        description: "A ring around +Y centered on the origin.",
+        inputs: [n("major", 0.5, "Ring radius.", 0), n("minor", 0.1, "Tube radius.", 0), int("segments", 48, "Around the ring.", 3), int("sides", 16, "Around the tube.", 3)],
+        build: i => torus(i.major, i.minor, i.segments, i.sides),
+    },
+    // --- 2D curves -----------------------------------------------------------------------------
+    {
+        type: "curve.circle", category: "Curve Primitives", label: "Circle", output: "curve2",
+        description: "A closed circle in the plane.",
+        inputs: [n("radius", 0.5, "Radius.", 0), int("segments", 32, "Points.", 3), { name: "center", kind: "vec2", default: [0, 0], description: "Center." }],
+        build: i => circle2(i.radius, i.segments, i.center),
+    },
+    {
+        type: "curve.ellipse", category: "Curve Primitives", label: "Ellipse", output: "curve2",
+        description: "A closed ellipse.",
+        inputs: [n("rx", 0.5, "X radius.", 0), n("ry", 0.3, "Y radius.", 0), int("segments", 32, "Points.", 3)],
+        build: i => ellipse2(i.rx, i.ry, i.segments),
+    },
+    {
+        type: "curve.polygon", category: "Curve Primitives", label: "Regular Polygon", output: "curve2",
+        description: "A regular polygon (a hexagon for a bolt head).",
+        inputs: [n("radius", 0.5, "Corner radius.", 0), int("sides", 6, "Sides.", 3, 64), n("rotation", 0, "Degrees.")],
+        build: i => polygon2(i.radius, i.sides, i.rotation * DEG),
+    },
+    {
+        type: "curve.rect", category: "Curve Primitives", label: "Rounded Rectangle", output: "curve2",
+        description: "A rectangle centered on the origin with rounded corners.",
+        inputs: [n("width", 1, "Width.", 0), n("height", 1, "Height.", 0), n("radius", 0, "Corner radius.", 0), int("cornerSegments", 6, "Points per corner.", 1, 32)],
+        build: i => roundedRect2(i.width, i.height, i.radius, i.cornerSegments),
+    },
+    {
+        type: "curve.superellipse", category: "Curve Primitives", label: "Superellipse", output: "curve2",
+        description: "Between an ellipse (exponent 2) and a rectangle (large exponent): squircle table tops and bottles.",
+        inputs: [n("width", 1, "Width.", 0), n("height", 1, "Height.", 0), n("exponent", 4, "Squareness.", 0.5, 20), int("segments", 64, "Points.", 8)],
+        build: i => superellipse2(i.width / 2, i.height / 2, i.exponent, i.segments),
+    },
+    {
+        type: "curve.star", category: "Curve Primitives", label: "Star", output: "curve2",
+        description: "A star with alternating outer and inner points.",
+        inputs: [n("outer", 0.5, "Tip radius.", 0), n("inner", 0.25, "Valley radius.", 0), int("points", 5, "Tips.", 2, 64)],
+        build: i => star2(i.outer, i.inner, i.points),
+    },
+    {
+        type: "curve.gear", category: "Curve Primitives", label: "Gear Outline", output: "curve2",
+        description: "A spur gear's toothed outline.",
+        inputs: [int("teeth", 24, "Teeth.", 3, 400), n("root", 0.45, "Root radius.", 0), n("tip", 0.5, "Tip radius.", 0), n("toothWidth", 0.45, "Tip width as a share of the pitch.", 0.1, 0.9), n("flank", 0.25, "Extra width at the root.", 0, 0.5)],
+        build: i => gear2(i.teeth, i.root, i.tip, i.toothWidth, i.flank),
+    },
+    {
+        type: "curve.points", category: "Curve Primitives", label: "Point List", output: "curve2",
+        description: "A 2D polyline from literal points, optionally with every corner filleted and/or smoothed.",
+        inputs: [{ name: "points", kind: "curve2", default: [], description: "[[x, y], ...]." }, n("fillet", 0, "Corner radius.", 0), int("filletSegments", 4, "Points per fillet.", 1, 32), { name: "closed", kind: "bool", default: false, description: "Treat as a loop." }, int("smooth", 0, "Catmull-Rom samples per span (0 keeps corners).", 0, 64)],
+        build: i => {
+            let pts: Vec2[] = i.points;
+            if (i.smooth > 0) pts = smoothPath(pts, i.smooth, i.closed);
+            return filletPolyline(pts, i.fillet, i.filletSegments, i.closed);
+        },
+    },
+    {
+        type: "curve.transform", category: "Curve Primitives", label: "Transform Curve", output: "curve2",
+        description: "Moves, rotates (degrees) and scales a 2D curve.",
+        inputs: [{ name: "curve", kind: "curve2", description: "Input." }, { name: "offset", kind: "vec2", default: [0, 0], description: "Move." }, n("rotation", 0, "Degrees."), { name: "scale", kind: "vec2", default: [1, 1], description: "Scale." }],
+        build: i => translate2(rotate2(scale2(i.curve, i.scale[0], i.scale[1]), i.rotation * DEG), i.offset[0], i.offset[1]),
+    },
+    {
+        type: "curve.sector", category: "Curve Primitives", label: "Annular Sector", output: "curve2",
+        description: "A ring segment between two radii and two angles (degrees) with rounded corners: gear cut-outs, vents, arcs of trim.",
+        inputs: [n("inner", 0.2, "Inner radius.", 0), n("outer", 0.4, "Outer radius.", 0), n("start", 0, "Start angle."), n("end", 60, "End angle."), n("radius", 0.02, "Corner rounding.", 0), int("segments", 24, "Points along each arc.", 2, 256)],
+        build: i => {
+            const a0 = i.start * DEG, a1 = i.end * DEG, m = i.segments;
+            const pts: Vec2[] = [];
+            for (let k = 0; k <= m; k++) { const a = a0 + ((a1 - a0) * k) / m; pts.push([Math.cos(a) * i.outer, Math.sin(a) * i.outer]); }
+            for (let k = m; k >= 0; k--) { const a = a0 + ((a1 - a0) * k) / m; pts.push([Math.cos(a) * i.inner, Math.sin(a) * i.inner]); }
+            return filletPolyline(pts, i.radius, 4, true);
+        },
+    },
+    {
+        type: "curve.arch", category: "Curve Primitives", label: "Arch", output: "curve2",
+        description: "An opening outline: a width x height rectangle whose top is a round arch `rise` high (0 is square-topped), bottom centred on the origin. Windows, doors, niches.",
+        inputs: [n("width", 1, "Width.", 0), n("height", 2, "Total height.", 0), n("rise", 0.5, "Arch height (half the width is a semicircle).", 0), int("segments", 24, "Points along the arch.", 2, 256)],
+        build: i => {
+            const hw = i.width / 2, rise = Math.max(0, Math.min(i.rise, i.height - 1e-4));
+            const spring = i.height - rise;
+            const pts: Vec2[] = [[-hw, 0], [hw, 0], [hw, spring]];
+            if (rise > 1e-5) {
+                // A circular segment through both springing points and the crown.
+                const R = (hw * hw + rise * rise) / (2 * rise), cy = spring + rise - R;
+                const a0 = Math.atan2(spring - cy, hw), a1 = Math.PI - a0;
+                for (let k = 1; k < i.segments; k++) { const a = a0 + ((a1 - a0) * k) / i.segments; pts.push([Math.cos(a) * R, cy + Math.sin(a) * R]); }
+            }
+            pts.push([-hw, spring]);
+            return pts;
+        },
+    },
+    {
+        type: "curves.linear", category: "Curve Primitives", label: "Linear Curve Copies", output: "curves2",
+        description: "`count` copies of a 2D curve, each `offset` further - a row of window openings for Extrude's holes.",
+        inputs: [{ name: "curve", kind: "curve2", description: "Input." }, int("count", 3, "Copies.", 1, 512), { name: "offset", kind: "vec2", default: [1, 0], description: "Step between copies." }, { name: "centered", kind: "bool", default: true, description: "Centre the row on the original." }],
+        build: i => {
+            const shift = i.centered ? (i.count - 1) / 2 : 0;
+            return Array.from({ length: i.count }, (_, k) => translate2(i.curve, (k - shift) * i.offset[0], (k - shift) * i.offset[1])) as unknown as Vec2[];
+        },
+    },
+    {
+        type: "curves.radial", category: "Curve Primitives", label: "Radial Curve Copies", output: "curves2",
+        description: "`count` copies of a 2D curve rotated evenly about the origin - a list of curves for Extrude's holes (spokes, vents, bolt circles).",
+        inputs: [{ name: "curve", kind: "curve2", description: "Input." }, int("count", 6, "Copies.", 1, 512), n("startAngle", 0, "Degrees.")],
+        build: i => Array.from({ length: i.count }, (_, k) => rotate2(i.curve, i.startAngle * DEG + (k / i.count) * Math.PI * 2)) as unknown as Vec2[],
+    },
+    // --- 3D paths ------------------------------------------------------------------------------
+    {
+        type: "path.points", category: "Paths", label: "Path", output: "curve3",
+        description: "A 3D polyline through literal points, with filleted corners (bent tube) or a smooth spline through them.",
+        inputs: [{ name: "points", kind: "points3", default: [], description: "[[x, y, z], ...]." }, n("fillet", 0, "Bend radius at each corner.", 0), int("filletSegments", 6, "Points per bend.", 1, 32), int("smooth", 0, "Spline samples per span (0 keeps corners).", 0, 64), { name: "closed", kind: "bool", default: false, description: "Loop." }, n("step", 0, "Split straight runs longer than this (so a later bend has points to move); 0 is off.", 0)],
+        build: i => {
+            let pts: Vec3[] = i.points;
+            if (i.smooth > 0) pts = smoothPath(pts, i.smooth, i.closed);
+            pts = filletPolyline(pts, i.fillet, i.filletSegments, i.closed);
+            return i.step > 0 ? subdivideSegments(pts, i.step, i.closed) : pts;
+        },
+    },
+    {
+        type: "path.bezier", category: "Paths", label: "Bezier", output: "curve3",
+        description: "A cubic Bezier from p0 to p3.",
+        inputs: [...["p0", "p1", "p2", "p3"].map((name): ComponentInput => ({ name, kind: "vec3", default: [0, 0, 0], description: "Control point." })), int("segments", 16, "Samples.", 2)],
+        build: i => bezier3(i.p0, i.p1, i.p2, i.p3, i.segments),
+    },
+    {
+        type: "path.arc", category: "Paths", label: "Arc", output: "curve3",
+        description: "An arc in the XZ plane (degrees).",
+        inputs: [n("radius", 0.5, "Radius.", 0), n("start", 0, "Start angle."), n("end", 180, "End angle."), int("segments", 16, "Samples.", 1)],
+        build: i => arc3(i.radius, i.start * DEG, i.end * DEG, i.segments),
+    },
+    {
+        type: "path.helix", category: "Paths", label: "Helix", output: "curve3",
+        description: "A helix rising around +Y (threads, springs, coils).",
+        inputs: [n("radius", 0.1, "Radius.", 0), n("pitch", 0.02, "Rise per turn.", 0), n("turns", 5, "Turns.", 0), int("segmentsPerTurn", 24, "Samples per turn.", 3)],
+        build: i => helix3(i.radius, i.pitch, i.turns, i.segmentsPerTurn),
+    },
+    {
+        type: "path.resample", category: "Paths", label: "Resample", output: "curve3",
+        description: "The same path with `count` evenly spaced points.",
+        inputs: [{ name: "path", kind: "curve3", description: "Input." }, int("count", 16, "Points.", 2, 2048)],
+        build: i => resample(i.path as Vec3[], i.count),
+    },
+    // --- Curve to mesh -------------------------------------------------------------------------
+    {
+        type: "mesh.lathe", category: "Curve to Mesh", label: "Lathe (Revolve)", output: "mesh",
+        description: "Spins a (radius, y) profile around +Y, bottom to top. Start and end on the axis for a closed solid: bottles, vases, turned legs, knobs.",
+        inputs: [{ name: "profile", kind: "curve2", description: "(radius, y) points." }, int("segments", 48, "Around.", 3), n("sweep", 360, "Degrees.", 0, 360), n("smoothAngle", 40, "Corners sharper than this stay crisp.", 0, 180), n("fillet", 0, "Round every profile corner.", 0), int("filletSegments", 4, "Points per fillet.", 1, 32), { name: "cap", kind: "bool", default: false, description: "Close both ends onto the axis (adds (0, y) points), for a solid from a side-only profile." }],
+        build: i => {
+            let profile: Vec2[] = filletPolyline(i.profile, i.fillet, i.filletSegments, false);
+            if (i.cap && profile.length) {
+                const first = profile[0], last = profile[profile.length - 1];
+                profile = [...(first[0] > 1e-6 ? [[0, first[1]] as Vec2] : []), ...profile, ...(last[0] > 1e-6 ? [[0, last[1]] as Vec2] : [])];
+            }
+            return lathe(profile, { segments: i.segments, sweep: i.sweep * DEG, smoothAngle: i.smoothAngle });
+        },
+    },
+    {
+        type: "mesh.extrude", category: "Curve to Mesh", label: "Extrude", output: "mesh",
+        description: "Extrudes a 2D outline (x, z) up from y = 0, with holes and a rounded bevel on both rims: table tops, gears, panels, frames.",
+        inputs: [{ name: "outline", kind: "curve2", description: "Closed outline." }, { name: "holes", kind: "curves2", default: [], description: "Closed hole outlines." }, n("height", 0.1, "Thickness.", 0), n("bevel", 0, "Rim rounding.", 0), int("bevelSegments", 3, "Rows per rim.", 1, 12), n("smoothAngle", 35, "Outline corners sharper than this stay crisp.", 0, 180)],
+        build: i => extrude(i.outline, i.height, { holes: i.holes, bevel: i.bevel, bevelSegments: i.bevelSegments, smoothAngle: i.smoothAngle }),
+    },
+    {
+        type: "mesh.loft", category: "Curve to Mesh", label: "Loft", output: "mesh",
+        description: "A closed, flat-shaded solid from a `bottom` outline (x, z) at y = 0 to a `top` outline at `height`, point to point (resampled when the counts differ): hip and gable roofs, hoppers, plinths, chimney caps.",
+        inputs: [{ name: "bottom", kind: "curve2", description: "Closed outline at y = 0." }, { name: "top", kind: "curve2", description: "Closed outline at the top (a very thin one makes a ridge)." }, n("height", 1, "Height.", 0)],
+        build: i => loft(i.bottom, i.top, i.height),
+    },
+    {
+        type: "mesh.sweep", category: "Curve to Mesh", label: "Sweep (Curve to Mesh)", output: "mesh",
+        description: "Sweeps a profile along a path - `radius` for a round tube, or any closed `profile`. `taper` scales the far end.",
+        inputs: [{ name: "path", kind: "curve3", description: "Path." }, { name: "profile", kind: "curve2", default: null, description: "Closed profile (overrides radius)." }, n("radius", 0.02, "Tube radius.", 0), int("sides", 16, "Tube sides.", 3, 128), n("taper", 1, "Scale at the end of the path.", 0), n("twist", 0, "Degrees per unit length."), { name: "closed", kind: "bool", default: false, description: "Loop the path." }, { name: "caps", kind: "bool", default: true, description: "Close the ends." }],
+        build: i => {
+            const profile: Vec2[] = i.profile && i.profile.length >= 3 ? i.profile : circle2(i.radius, i.sides);
+            const count = (i.path as Vec3[]).length;
+            const scales = i.taper !== 1 ? Array.from({ length: count }, (_, k) => 1 + (i.taper - 1) * (k / Math.max(1, count - 1))) : undefined;
+            return sweep(i.path, profile, { scales, twist: i.twist * DEG, closed: i.closed, caps: i.caps });
+        },
+    },
+    // --- Deform --------------------------------------------------------------------------------
+    {
+        type: "deform.bend", category: "Deform", label: "Bend", output: "mesh",
+        description: "Bends geometry around a vertical axis: `angle` degrees across `width` of X, both ends curving toward +Z (a chair back wrapping the sitter).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, n("angle", 30, "Degrees across the width."), n("width", 1, "Span of X the angle covers.", 0)],
+        build: i => bendY(i.mesh, i.angle * DEG, i.width),
+    },
+    {
+        type: "deform.taper", category: "Deform", label: "Taper", output: "mesh",
+        description: "Scales X/Z from 1 at `y0` to `amount` at `y1`.",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, n("amount", 0.5, "Scale at y1.", 0), n("y0", 0, "Start height."), n("y1", 1, "End height.")],
+        build: i => taperY(i.mesh, i.amount, i.y0, i.y1),
+    },
+    {
+        type: "deform.twist", category: "Deform", label: "Twist", output: "mesh",
+        description: "Twists around +Y by `rate` degrees per unit of height.",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, n("rate", 90, "Degrees per unit height.")],
+        build: i => twistY(i.mesh, i.rate * DEG),
+    },
+    {
+        type: "deform.noise", category: "Deform", label: "Noise Displace", output: "mesh",
+        description: "Pushes the surface along its normals by fractal noise, then rebuilds normals (smooth or faceted).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, n("amount", 0.1, "Displacement."), n("frequency", 2, "Noise scale.", 0), int("octaves", 4, "Detail layers.", 1, 8), int("seed", 0, "Noise seed.", -1e9, 1e9), { name: "faceted", kind: "bool", default: false, description: "Flat-shaded facets." }, { name: "radial", kind: "bool", default: false, description: "Push away from the origin instead of along normals: never folds a closed blob (rocks)." }],
+        build: i => recomputeNormals(displaceNoise(i.mesh, i.amount, i.frequency, i.seed, i.octaves, i.radial), !i.faceted),
+    },
+    {
+        type: "deform.clamp", category: "Deform", label: "Clamp Height", output: "mesh",
+        description: "Flattens everything below `min` (and above `max`) onto that plane: a rock's resting face, a cushion's flat underside.",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, n("min", -1e9, "Floor."), n("max", 1e9, "Ceiling."), n("give", 0, "0 flattens hard; above 0 squashes what's past the plane to this fraction instead, which never folds a face (rebuild normals after).", 0, 1)],
+        build: i => {
+            const f = (y: number) => (y < i.min ? i.min + (y - i.min) * i.give : y > i.max ? i.max + (y - i.max) * i.give : y);
+            const m = mapPositions(i.mesh, ([x, y, z]) => [x, f(y), z]);
+            if (i.give > 0) return m;
+            return { parts: m.parts.map(p => {
+                const normals = p.normals.slice();
+                for (let v = 0; v < normals.length; v += 3) {
+                    const y = p.positions[v + 1];
+                    if (y <= i.min + 1e-9) { normals[v] = 0; normals[v + 1] = -1; normals[v + 2] = 0; }
+                    else if (y >= i.max - 1e-9) { normals[v] = 0; normals[v + 1] = 1; normals[v + 2] = 0; }
+                }
+                return { ...p, normals };
+            }) };
+        },
+    },
+    // --- Instances -----------------------------------------------------------------------------
+    {
+        type: "instance.radial", category: "Instances", label: "Radial Array", output: "mesh",
+        description: "`count` copies rotated evenly around +Y (chair base spokes, wheel spokes, petals).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, int("count", 5, "Copies.", 1, 1024), n("startAngle", 0, "Degrees.")],
+        build: i => radialArray(i.mesh, i.count, i.startAngle * DEG),
+    },
+    {
+        type: "instance.linear", category: "Instances", label: "Linear Array", output: "mesh",
+        description: "`count` copies, each `offset` further (slats, shelves, balusters).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, int("count", 3, "Copies.", 1, 1024), { name: "offset", kind: "vec3", default: [1, 0, 0], description: "Step between copies." }],
+        build: i => linearArray(i.mesh, i.count, i.offset),
+    },
+    {
+        type: "instance.mirror", category: "Instances", label: "Mirror", output: "mesh",
+        description: "The input plus its reflection across the plane normal to `axis` (x, y or z).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, { name: "axis", kind: "enum", default: "x", options: ["x", "y", "z"], description: "Mirror axis." }],
+        build: i => mirror(i.mesh, ({ x: 0, y: 1, z: 2 } as const)[i.axis as "x" | "y" | "z"] ?? 0),
+    },
+    {
+        type: "instance.onPoints", category: "Instances", label: "Instance on Points", output: "mesh",
+        description: "A copy of `mesh` at every point, optionally rotated about Y by `rotations` (degrees, one per point or one for all).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Instance." }, { name: "points", kind: "points3", description: "Positions." }, { name: "rotations", kind: "points3", default: [], description: "Per-point [x, y, z] degrees." }, { name: "scales", kind: "points3", default: [], description: "Per-point [x, y, z] scale." }],
+        build: i => join(...(i.points as Vec3[]).map((p, k) => {
+            const r: number[] = (i.rotations as Vec3[])[k] ?? (i.rotations as Vec3[])[0] ?? [0, 0, 0];
+            const s: number[] = (i.scales as Vec3[])[k] ?? (i.scales as Vec3[])[0] ?? [1, 1, 1];
+            return transformMesh(i.mesh, compose4(p, [r[0] * DEG, r[1] * DEG, r[2] * DEG], s as Vec3));
+        })),
+    },
+    // --- Plants --------------------------------------------------------------------------------
+    {
+        type: "mesh.leaf", category: "Plants", label: "Leaf", output: "mesh",
+        description: "One double-sided leaf lying flat: it grows along +Z from the origin (after its stalk), its upper face looks up +Y, and `curl` bends the tip down. Also petals, grass blades and conifer sprays.",
+        inputs: [
+            { name: "shape", kind: "enum", default: "ovate", options: [...LEAF_SHAPES], description: "Outline: ovate, lanceolate, round, heart, lobed (oak), blade (grass), petal, spray (a flat conifer sprig)." },
+            n("length", 0.1, "Blade length.", 0.0005), n("width", 0.05, "Blade width.", 0.0001), n("fold", 15, "Degrees each half rises from the midrib.", 0, 80),
+            n("curl", 20, "Degrees the blade bends down toward its tip.", -180, 360), n("petiole", 0, "Stalk length.", 0),
+            int("segments", 5, "Rows along the blade.", 2, 32), int("lobes", 3, "Lobes (lobed) or teeth (spray).", 1, 24), n("tipTint", 0, "Tint gradient toward the tip (dry grass, lavender).", 0, 1),
+        ],
+        build: i => leaf({ shape: i.shape as LeafShape, length: i.length, width: i.width, fold: i.fold, curl: i.curl, petiole: i.petiole, segments: i.segments, lobes: i.lobes, tipTint: i.tipTint }),
+    },
+    {
+        type: "plant.tree", category: "Plants", label: "Tree", output: "mesh",
+        description: "A branching tree standing on the origin: a trunk (forking into limbs, or one leader to the top), limbs and twigs as tapering bark tubes in `barkRegion`, and `leaf` copies on every twig, shaded darker deep inside the crown.",
+        inputs: [
+            n("height", 6, "Overall height.", 0.05), n("trunkRadius", 0.18, "Trunk radius at the base.", 0.001),
+            int("levels", 3, "Branching depth below the trunk.", 0, 4), int("branches", 6, "Main limbs.", 1, 64), int("twigs", 4, "Branches on every limb, and on theirs.", 0, 24),
+            n("crownBase", 0.35, "Share of the height that is bare trunk.", 0, 0.95), n("leader", 0, "0 forks into limbs; 1 one leader to the top.", 0, 1),
+            n("angle", 45, "Degrees limbs leave their parent at.", 0, 150), n("reach", 0.6, "Limb length relative to the crown height.", 0.02, 3), n("subReach", 0.5, "Branch length relative to its parent.", 0.05, 1.5),
+            { name: "crownShape", kind: "enum", default: "round", options: ["round", "oval", "conical", "spreading", "columnar"], description: "How limb length changes up the trunk." },
+            n("radiusRatio", 0.55, "Child radius relative to its parent.", 0.05, 1), n("gnarl", 0.3, "Random bending.", 0, 2), n("droop", 0, "Positive arches branches down (weeping); negative sweeps them up.", -2, 4),
+            n("lean", 0, "Degrees the trunk leans.", 0, 60), n("flare", 0.4, "Root flare at the base.", 0, 2), int("sides", 12, "Trunk sides (thinner branches use fewer).", 3, 32), int("segments", 6, "Points along each branch.", 2, 24),
+            int("seed", 0, "Seed.", -1e9, 1e9),
+            { name: "leaf", kind: "mesh", default: null, description: "Leaf (or cluster) placed on every terminal branch; its +Z points out along the twig." },
+            int("leaves", 8, "Leaves per terminal branch.", 0, 200), n("leafStart", 0.3, "Where leaves begin along a twig.", 0, 1), n("leafAngle", 55, "Degrees between a leaf and its twig.", 0, 120),
+            n("leafDroop", 0.1, "0 leaves face the sky; 1 they hang.", -1, 2), { name: "leafAlign", kind: "enum", default: "twig", options: ["twig", "flat", "random"], description: "Spiralling around the twig facing up; in two flat ranks either side (fir sprays); or any orientation (clusters, puffs)." },
+            n("leafScaleVariation", 0.25, "Random size spread.", 0, 0.9), n("tintVariation", 0.5, "Random lean toward the leaf material's tint.", 0, 1), int("leafBudget", 120000, "Triangles all the leaves may use; the count per twig drops to fit.", 1, 1000000),
+            n("bark", 0.5, "Trunk surface roughness.", 0, 2),
+            { name: "bloom", kind: "mesh", default: null, description: "Flower or fruit placed at twig tips, its +Y facing out." }, int("blooms", 0, "Per twig tip.", 0, 12),
+            { name: "barkRegion", kind: "string", default: "default", description: "Region for the wood." },
+            { name: "leafRegion", kind: "string", default: "", description: "Region for the leaves (empty keeps the leaf's own)." },
+        ],
+        build: i => tree({ ...i, crownShape: i.crownShape as CrownShape, leafAlign: i.leafAlign as "twig" | "flat" | "random" } as Parameters<typeof tree>[0]),
+    },
+    {
+        type: "plant.frond", category: "Plants", label: "Frond", output: "mesh",
+        description: "A pinnate frond (fern, palm) growing along +Z from the origin and arching down: a tapering stem in `stemRegion` and leaflets on both sides in `leafRegion`. `unfurl` below 1 coils the tip into a fiddlehead.",
+        inputs: [
+            n("length", 0.8, "Frond length.", 0.001), n("arch", 60, "Degrees it arches over its length.", -90, 270), n("unfurl", 1, "1 open; lower coils the tip.", 0, 1),
+            int("leaflets", 18, "Leaflets on each side.", 0, 80), n("leafletLength", 0.22, "Longest leaflet relative to the frond.", 0.01, 1), n("leafletWidth", 0.25, "Leaflet width relative to its length.", 0.02, 2),
+            n("leafletAngle", 70, "Degrees from the stem toward the tip.", 5, 120), n("leafletDroop", 15, "Degrees the leaflets hang below the frond's plane.", -60, 80),
+            { name: "shape", kind: "enum", default: "lanceolate", options: [...LEAF_SHAPES], description: "Leaflet outline." },
+            n("stalk", 0.15, "Bare stem share at the base.", 0, 0.9), n("stemRadius", 0.006, "Stem radius at the base.", 0.0002), n("tintVariation", 0.3, "Random lean toward the tint.", 0, 1),
+            int("seed", 0, "Seed.", -1e9, 1e9),
+            { name: "stemRegion", kind: "string", default: "default", description: "Region for the stem." },
+            { name: "leafRegion", kind: "string", default: "default", description: "Region for the leaflets." },
+        ],
+        build: i => frond({ ...i, shape: i.shape as LeafShape } as Parameters<typeof frond>[0]),
+    },
+    {
+        type: "plant.blades", category: "Plants", label: "Grass Clump", output: "mesh",
+        description: "A clump of grass blades (or straps, spikes) rising from a small disc on the floor, leaning out and curling over, with an optional tint gradient toward the tips.",
+        inputs: [
+            int("count", 40, "Blades.", 1, 600), n("height", 0.3, "Blade height.", 0.001), n("heightVariation", 0.4, "Random height spread.", 0, 0.95), n("width", 0.008, "Blade width.", 0.0002),
+            n("radius", 0.04, "Radius of the clump's base.", 0), n("lean", 25, "Degrees the blades lean out.", 0, 85), n("curl", 50, "Degrees each blade bends over.", 0, 240),
+            n("tipTint", 0, "Gradient toward the tint color at the tips.", 0, 1), n("tintVariation", 0.3, "Random lean toward the tint.", 0, 1), int("segments", 4, "Rows along each blade.", 2, 16),
+            int("seed", 0, "Seed.", -1e9, 1e9), { name: "shape", kind: "enum", default: "blade", options: [...LEAF_SHAPES], description: "Blade outline." },
+        ],
+        build: i => blades({ ...i, shape: i.shape as LeafShape } as Parameters<typeof blades>[0]),
+    },
+    {
+        type: "plant.stalk", category: "Plants", label: "Stalk", output: "mesh",
+        description: "A tapering, closed round stalk along a path: palm and tree-fern trunks (with `rings`), flower stems, reeds.",
+        inputs: [
+            { name: "path", kind: "curve3", description: "Path from the base up." }, n("radius", 0.05, "Radius at the base.", 0.0001), n("tipRadius", 0.03, "Radius at the top.", 0.0001),
+            int("sides", 12, "Sides.", 3, 64), n("rings", 0, "Bands along the stalk.", 0, 400), n("ringDepth", 0.12, "How deep the bands pinch.", 0, 0.6), n("flare", 0, "Swelling at the base.", 0, 2),
+            n("bark", 0, "Surface roughness.", 0, 2), int("seed", 0, "Seed.", -1e9, 1e9),
+        ],
+        build: i => stalk(i.path, i as Parameters<typeof stalk>[1]),
+    },
+    {
+        type: "instance.scatter", category: "Instances", label: "Scatter on Ground", output: "mesh",
+        description: "`count` copies of `mesh` spread over a disc on the floor (an even, jittered spiral), each turned, tilted and sized at random: flower beds, meadows, pebbles.",
+        inputs: [
+            { name: "mesh", kind: "mesh", description: "Instance, standing on its origin." }, int("count", 12, "Copies.", 1, 2000), n("radius", 0.5, "Disc radius.", 0),
+            int("seed", 0, "Seed.", -1e9, 1e9), n("scaleMin", 0.8, "Smallest size.", 0), n("scaleMax", 1.2, "Largest size.", 0), n("tilt", 8, "Degrees of random tilt.", 0, 60),
+            n("falloff", 0, "0 even; 1 crowds the middle.", 0, 1), n("tintVariation", 0, "Random lean toward the foliage tint per copy.", 0, 1),
+        ],
+        build: i => scatter(i.mesh, i as Parameters<typeof scatter>[1]),
+    },
+    {
+        type: "instance.onSurface", category: "Instances", label: "Distribute on Surface", output: "mesh",
+        description: "`count` copies of `mesh` over the faces of `surface` (area-weighted), each copy's +Y along the surface normal and its +Z along the surface tipped up by `tilt`: leaves over a clipped hedge, blossoms on a shrub.",
+        inputs: [
+            { name: "surface", kind: "mesh", description: "Surface to cover." }, { name: "mesh", kind: "mesh", description: "Instance (a leaf lies flat on it)." },
+            int("count", 200, "Copies.", 0, 20000), int("seed", 0, "Seed.", -1e9, 1e9), n("scaleMin", 0.8, "Smallest size.", 0), n("scaleMax", 1.2, "Largest size.", 0),
+            n("tilt", 25, "Degrees each copy lifts off the surface.", -90, 90), n("tintVariation", 0.4, "Random lean toward the foliage tint.", 0, 1),
+            { name: "keepSurface", kind: "bool", default: false, description: "Also output the surface, shaded as deep foliage." },
+            { name: "surfaceRegion", kind: "string", default: "", description: "Region for the kept surface (empty keeps its own)." },
+            n("minNormalY", -1, "Only faces whose normal's y is at least this (0: upward-facing only).", -1, 1),
+        ],
+        build: i => distributeOnSurface(i.surface, i.mesh, i as Parameters<typeof distributeOnSurface>[2]),
+    },
+    {
+        type: "plant.shade", category: "Plants", label: "Foliage Shading", output: "mesh",
+        description: "Shades geometry that isn't leaves (stylized puffs, conifer tiers, a hedge's body) like foliage: how deep in the crown it sits, lower parts deeper by `gradient`, and a random tint lean per part.",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, n("occlusion", 0, "How buried (0 outside, 1 deep inside).", 0, 1), n("gradient", 0.4, "Extra depth toward the bottom.", 0, 1), n("tintVariation", 0, "Random lean toward the tint per part.", 0, 1), int("seed", 0, "Seed.", -1e9, 1e9)],
+        build: i => shadeFoliage(i.mesh, i as Parameters<typeof shadeFoliage>[1]),
+    },
+    // --- Figures -------------------------------------------------------------------------------
+    {
+        type: "figure.human", category: "Figures", label: "Human", output: "mesh",
+        description: "A person standing on the origin facing +Z: an anatomical body (blended forms over a posable skeleton, a sculpted face, eyes with iris and cornea), clothes cut to fit and draped by cloth physics, shoes, and styled hair settled by strand physics, with brows, lashes and an optional beard. Regions: skin, lips, nails, eyes, iris, pupil, cornea, top, bottom, shoes, soles, hair, hairCap, brows, lashes, beard. Hair and clothes keep simulating in the viewport.",
+        inputs: [
+            n("height", DEFAULT_HUMAN.height, "Standing height without shoes.", 1.2, 2.2), n("masculinity", DEFAULT_HUMAN.masculinity, "0 typical female build and face, 1 typical male.", 0, 1),
+            n("weight", DEFAULT_HUMAN.weight, "Body fat.", 0, 1), n("muscle", DEFAULT_HUMAN.muscle, "Muscle definition.", 0, 1),
+            n("shoulders", 1, "Shoulder width.", 0.8, 1.2), n("hips", 1, "Hip width.", 0.8, 1.2), n("waist", 1, "Waist width.", 0.8, 1.25), n("bust", DEFAULT_HUMAN.bust, "Bust (female builds).", 0, 1),
+            n("legLength", 1, "Leg length.", 0.88, 1.12), n("armLength", 1, "Arm length.", 0.9, 1.1), n("headSize", 1, "Head size.", 0.9, 1.1), n("neckLength", 1, "Neck length.", 0.6, 1.5),
+            ...(["jawWidth", "chin", "cheekbones", "noseLength", "noseWidth", "noseBridge", "lips", "mouthWidth", "eyeSize", "eyeSpacing", "browRidge", "earSize"] as const).map(k => n(k, 0.5, `Face: ${k} (0.5 average).`, 0, 1)),
+            n("smile", DEFAULT_HUMAN.smile, "Lifts the mouth's corners.", 0, 1),
+            { name: "pose", kind: "enum", default: "relaxed", options: [...POSES], description: "Body pose." },
+            n("armRaise", 0, "Degrees added to both arms' abduction.", -20, 60), n("elbowBend", 0, "Degrees added to both elbows.", -10, 60),
+            n("headTurn", 0, "Degrees the head turns (to its left).", -50, 50), n("headTilt", 0, "Degrees the head nods (down).", -25, 25),
+            n("fingerCurl", DEFAULT_HUMAN.fingerCurl, "How curled the fingers are.", 0, 1), n("stance", 0.5, "Feet apart.", 0, 1),
+            { name: "top", kind: "enum", default: DEFAULT_HUMAN.outfit.top, options: [...TOPS], description: "Top garment (a dress replaces the bottom)." },
+            n("sleeve", DEFAULT_HUMAN.outfit.sleeve, "Sleeve length as a share of the arm.", 0, 1), n("topLength", 1, "Top hem: 0 waist, 1 hip, 2 mid-thigh.", 0, 2),
+            { name: "neckline", kind: "enum", default: "crew", options: [...NECKLINES], description: "Neckline." }, n("topFit", DEFAULT_HUMAN.outfit.topFit, "0 fitted, 1 loose.", 0, 1),
+            { name: "bottom", kind: "enum", default: DEFAULT_HUMAN.outfit.bottom, options: [...BOTTOMS], description: "Bottom garment." },
+            n("bottomLength", 1, "Trousers: share of the leg; skirt or dress: hem from the waist toward the floor.", 0, 1), n("bottomFit", DEFAULT_HUMAN.outfit.bottomFit, "0 fitted, 1 loose.", 0, 1),
+            n("flare", DEFAULT_HUMAN.outfit.flare, "Skirt flare, 0 straight to 1 full circle.", 0, 1),
+            { name: "shoes", kind: "enum", default: DEFAULT_HUMAN.shoes, options: [...SHOES], description: "Footwear." },
+            { name: "hairStyle", kind: "enum", default: DEFAULT_HUMAN.hair.style, options: [...HAIR_STYLES], description: "Hairstyle." },
+            n("hairLength", 1, "Length relative to the style.", 0.4, 1.8), n("curl", DEFAULT_HUMAN.hair.curl, "0 straight to 1 tight curls.", 0, 1), n("volume", DEFAULT_HUMAN.hair.volume, "0 sleek to 1 full.", 0, 1),
+            { name: "part", kind: "enum", default: "side", options: [...PARTINGS], description: "Parting." }, n("bangs", 0, "Fringe: 0 swept back, 1 to the brows.", 0, 1),
+            n("density", 1, "Strands relative to normal.", 0.3, 2), { name: "beard", kind: "enum", default: "none", options: [...BEARDS], description: "Facial hair." },
+            n("browFullness", 0.5, "Brows, fine to bushy.", 0, 1), { name: "lashes", kind: "bool", default: true, description: "Eyelashes." },
+            n("wind", 0, "Wind (m/s) the clothes and hair settle in.", 0, 12),
+            { name: "quality", kind: "enum", default: "final", options: ["draft", "final"], description: "Draft builds a coarser person quickly." },
+            int("seed", 1, "Seed (individual asymmetry, strand placement).", -1e9, 1e9),
+        ],
+        build: i => {
+            const { top, sleeve, topLength, neckline, topFit, bottom, bottomLength, bottomFit, flare, shoes, hairStyle, hairLength, curl, volume, part, bangs, density, beard, browFullness, lashes, wind, quality, ...body } = i;
+            const p: HumanParams = {
+                ...DEFAULT_HUMAN, ...body,
+                outfit: { top, sleeve, topLength, neckline, topFit, bottom, bottomLength, bottomFit, flare },
+                shoes, wind, quality,
+                hair: { style: hairStyle, length: hairLength, curl, volume, part, bangs, density, beard, brows: browFullness, lashes },
+            } as HumanParams;
+            return buildHuman(p);
+        },
+    },
+    // --- Geometry ------------------------------------------------------------------------------
+    {
+        type: "geo.join", category: "Geometry", label: "Join", output: "mesh",
+        description: "Combines meshes, keeping each part's region.",
+        inputs: [{ name: "meshes", kind: "meshes", default: [], description: "Inputs." }],
+        build: i => join(...i.meshes),
+    },
+    {
+        type: "geo.transform", category: "Geometry", label: "Transform", output: "mesh",
+        description: "Pass-through: use the common `at`/`rotate`/`scale` fields to place a copy of `mesh`.",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }],
+        build: i => i.mesh,
+    },
+    {
+        type: "geo.smooth", category: "Geometry", label: "Shade Smooth / Flat", output: "mesh",
+        description: "Rebuilds normals: smooth (welded by position), auto-smooth (creases sharper than `angle` stay crisp) or flat facets.",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, { name: "smooth", kind: "bool", default: true, description: "Smooth or flat." }, n("angle", 180, "Degrees: faces meeting at a sharper angle don't share a normal (180 smooths everything).", 0, 180)],
+        build: i => (i.smooth && i.angle < 179.9 ? autoSmoothNormals(i.mesh, i.angle * DEG) : recomputeNormals(i.mesh, i.smooth)),
+    },
+    {
+        type: "geo.region", category: "Geometry", label: "Set Region", output: "mesh",
+        description: "Moves every part of `mesh` into one semantic material region (same as the common `region` field).",
+        inputs: [{ name: "mesh", kind: "mesh", description: "Input." }, { name: "name", kind: "string", default: "default", description: "Region." }],
+        build: i => setRegion(i.mesh, i.name),
+    },
+];
+
+export const CATALOG: ReadonlyMap<string, ComponentDef> = new Map(LIST.map(c => [c.type, c]));
+
+export const CATALOG_CATEGORIES = [...new Set(LIST.map(c => c.category))];
+
+/**
+ * Fields every node may carry besides its component inputs. `object` nodes take `object` and `params`;
+ * `rest: true` lifts each placed copy so its lowest point sits on the floor (splayed legs, casters).
+ */
+export const COMMON_NODE_FIELDS = ["id", "type", "when", "repeat", "keep", "at", "rotate", "scale", "rest", "region", "output", "note", "object", "params"] as const;

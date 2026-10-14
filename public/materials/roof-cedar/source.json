@@ -1,0 +1,15 @@
+{
+  "archive": "roof-cedar.zip",
+  "material": "roof-cedar",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "X3NCvc2GOYW-llYA4XI5P_6AiGzfVU.png",
+    "basecolor": "mEo2F047Iyxmw9FGxCBra_Zd5SS2g3.png",
+    "normal": "sRTpOAR63uu8xWsfrH6lH_m6uXXF9h.png",
+    "roughness": "R-o1P50m15Jubt47FGchI_X3jvL47B.png",
+    "metallic": "uF30WZ-VCIoFsRcA70L9s_cpxub2IK.png",
+    "height": "YnvYa9_c_zzdrdsmeEORk_3M78CBXm.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

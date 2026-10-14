@@ -1,0 +1,15 @@
+{
+  "archive": "sandstone-blocks.zip",
+  "material": "sandstone-blocks",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "_NbkvvIioHtks-6AB_DwH_FWEsby85.png",
+    "basecolor": "YBPjnv3-__82eX3CSthgZ_MGBu48Ph.png",
+    "normal": "KV3O6-i0WTh3XiX5TFCwj_CUzwMVbv.png",
+    "roughness": "ry71-2JS90JMmmWOMAH49_yuUySxMD.png",
+    "metallic": "wYN6WFPkgDIP6l0eTcgXo_dEtyThLP.png",
+    "height": "DXimWzjcOlMAuYCFTmr8E_d8r1gWrl.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

@@ -1,0 +1,15 @@
+{
+  "archive": "wood-walnut.zip",
+  "material": "wood-walnut",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "rVH8Xmza3JLHnv4xMFdeh_0hxKHitr.png",
+    "basecolor": "X7CGk8v1cYWVWsGQrTcH4_cDiP8WiF.png",
+    "normal": "4lVYZekRMfbvZvbHC8bUg_dp4UNSW9.png",
+    "roughness": "GSuGnHJNhndpL_Me3FfYN_wR4xYIsN.png",
+    "metallic": "7dNecPgN_hYWDbaLGVvQu_8DU3q2L2.png",
+    "height": "LSdBeho9YN6un1XKCSLaj_uQn1HSUP.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

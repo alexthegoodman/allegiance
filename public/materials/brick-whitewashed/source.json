@@ -1,0 +1,15 @@
+{
+  "archive": "brick-whitewashed.zip",
+  "material": "brick-whitewashed",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "0ye_rRdSrCoqIbMwJKv-L_6jTusrwM.png",
+    "basecolor": "iKjVB7u5c__1bMTdzOYPx_qW4nWbOA.png",
+    "normal": "HNprlPYa3wOcD2bpqNZxt_U4A9Lx9b.png",
+    "roughness": "0IwfT5SAyCc9hhNMI-MHh_EEBT3k7K.png",
+    "metallic": "6cehuHth9KShN5CUyFDug_u2tPJom6.png",
+    "height": "eaEoJU0xMdRe8IoSxrGFv_qRbcMS8g.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

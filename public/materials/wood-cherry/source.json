@@ -1,0 +1,15 @@
+{
+  "archive": "wood-cherry.zip",
+  "material": "wood-cherry",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "XbMs8bsvbCLyL8IAd2_zX_pcP08xNl.png",
+    "basecolor": "rn3Sd1lEf9gerTPJv6_27_H9ePRk7G.png",
+    "normal": "WAMeeSbjNWb9YJF6qCrfk_NcmOi2ET.png",
+    "roughness": "uz5BV4-Yh2VdtQxpcpf0B_CQ6Ydm8D.png",
+    "metallic": "ne42LCrsIpNH-kchrxBY2_RHPTi2OP.png",
+    "height": "X7VfcVrGUXhf9Dz_9NOUD_hGuKZRzq.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

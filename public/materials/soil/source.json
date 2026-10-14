@@ -1,0 +1,15 @@
+{
+  "archive": "soil.zip",
+  "material": "soil",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "GAeE0VoUAZvQfi0nF6DXj_M0GYq8MH.png",
+    "basecolor": "e9bQp86IWPWC1MYeteh5P_v4CPtRCO.png",
+    "normal": "5s7y-e31Xu6Q6tw556I_o_tOD9Qr6c.png",
+    "roughness": "7gOmg2yycjRgGgRz9s5oC_BR9870HL.png",
+    "metallic": "DmdmI5ylo8fiqA375kqQf_cFRmi0Xn.png",
+    "height": "TTzhS9L3igu7DTTSJTO9B_syZfDver.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

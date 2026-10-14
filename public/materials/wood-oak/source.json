@@ -1,0 +1,15 @@
+{
+  "archive": "wood-oak.zip",
+  "material": "wood-oak",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "hCdG82G00v_U51Pw1jgrt_SP2MeYIj.png",
+    "basecolor": "_KxvTMGsAP9Rd1_d8CPdp_Ro7vLST9.png",
+    "normal": "XO65or46poxEtVD_JG1j2_Oix5cH29.png",
+    "roughness": "e_u4KNMgqZRQ5yyAtK0QU_lNQ3msMP.png",
+    "metallic": "M7EukuFXxb08bC9djB2ha_5ZuRHLYS.png",
+    "height": "3e3t2XzdbEUWpmhjRxzTy_OBJ74YMW.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

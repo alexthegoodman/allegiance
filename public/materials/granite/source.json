@@ -1,0 +1,15 @@
+{
+  "archive": "granite.zip",
+  "material": "granite",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "QY0ASbGdW_c1Q2taq5mDe_WCy4Zw5O.png",
+    "basecolor": "O3lnI6c_AmrySQeJcrbDg_gAhO8vMy.png",
+    "normal": "xt1PsV9n8nJ6EroTaa5AU_KZXPOtxM.png",
+    "roughness": "q9PtotmGoIcacfJ4OS6hq_kIZQAZO9.png",
+    "metallic": "mZoxc_kLX2P36aA9HnqVL_o9BcFB2K.png",
+    "height": "B03KD1W8ldBEkLfBO4hpP_4Gs4kbCK.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

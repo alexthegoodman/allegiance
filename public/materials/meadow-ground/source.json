@@ -1,0 +1,15 @@
+{
+  "archive": "meadow-ground.zip",
+  "material": "meadow-ground",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "sOFOw1j4FME6MBXEhNnkH_lS2jXgJ6.png",
+    "basecolor": "WIbeK75LE25Ks3_SeORdE_BXs8yU79.png",
+    "normal": "cppYIWj_ONWrlwyEPCB1e_sIZmfRad.png",
+    "roughness": "vt64VvHEJSU7cCQVwwQ81_SIf2XXxd.png",
+    "metallic": "_LdcS2jsNqETQSzV6C03t_5iTkNGCN.png",
+    "height": "UdSDzBXHjf8Lpcu5F3Ioh_HjF48zJY.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

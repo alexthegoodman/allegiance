@@ -1,0 +1,15 @@
+{
+  "archive": "roof-clay.zip",
+  "material": "roof-clay",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "H44-Nnme_Sood8fNnAvlH_fudNvcMp.png",
+    "basecolor": "jeSYcmEoavNzKmIrf5rdz_aWOyOSHj.png",
+    "normal": "AJ9FE9cyKxPoPdZoUU4Qj_ykM1xn4p.png",
+    "roughness": "0zJBzaK9ZceNgCy4OLriV_hytp62Bz.png",
+    "metallic": "o7G4N-NIyPJ3E2qDJxDQs_Kwk8n2PR.png",
+    "height": "1p9xckd-6v1g70BwyFS7M_TfLnJcw9.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

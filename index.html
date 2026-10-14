@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allegiance</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Play:wght@400;700&family=Vina+Sans&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #world, #ui { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #world { touch-action: none; outline: none; }
+  #ui { pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="world" tabindex="0"></canvas>
+<canvas id="ui"></canvas>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "archive": "marble.zip",
+  "material": "marble",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "EcnRDnWMj1NDFhCCYii2q_cXFQxXAP.png",
+    "basecolor": "pnP5ZKtRpbzOXWMQu1FS4_K5CCZpLM.png",
+    "normal": "W6uu4qcGTCm7RAqUpYgt7_HuqzIguM.png",
+    "roughness": "o59TS-70hVezNqjrHQ8Bc_Uz6gL8Kv.png",
+    "metallic": "edgYlvR5jYlD8epMd60Km_CqvWp2UW.png",
+    "height": "GQ72J0BCkNYFKzwqYsIpZ_1y9opT74.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

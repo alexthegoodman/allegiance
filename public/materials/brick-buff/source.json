@@ -1,0 +1,15 @@
+{
+  "archive": "brick-buff.zip",
+  "material": "brick-buff",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "FgDtUJW1DLfmXycDiRx92_5vbNG78r.png",
+    "basecolor": "GBapK1VRh-a0iNIlo_zEg_LQVBfW4u.png",
+    "normal": "0_t4Jhb1bpCKoldb0Ikox_B9M5s5nO.png",
+    "roughness": "KmjfcPPhu6c-ghwqijI2B_7lBRO1ZJ.png",
+    "metallic": "symsJwd6nWUaEIp_NbUwE_QKSQiuAU.png",
+    "height": "0YuRSpl4UnUUS1mEqhCWN_TacSEDaq.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

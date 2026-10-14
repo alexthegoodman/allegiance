@@ -1,0 +1,15 @@
+{
+  "archive": "metal-corrugated.zip",
+  "material": "metal-corrugated",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "Qk8pvgqrsdzBk0id9O4Wd_nGorqDwu.png",
+    "basecolor": "ze1fqaaZvUNt3KSvrMhdF_MuVw8QEq.png",
+    "normal": "1OOUCueLNe8jBAVFkp9b1_aKQQXNdg.png",
+    "roughness": "ol-Gut_zb_cvdtaYHA6HV_Qtky5fj1.png",
+    "metallic": "0KT5Vd5Wk68w0v3RH-T3u_eHgeciAq.png",
+    "height": "tLEk3PjSrkfJo6eL2vGIh_bFCLLbp4.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

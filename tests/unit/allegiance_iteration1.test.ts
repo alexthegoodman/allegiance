@@ -1,0 +1,205 @@
+import { describe, expect, it } from "vitest";
+import { newCampaign, discoverSettlement, restoreSettlements, campaignRegions, regionAt, partyShare, neighbors } from "../../src/game/al_state";
+import { REGIONS, WORLD_POPULATION, PARTY, countryOf, regionDefById } from "../../src/game/al_data";
+import { takeRegion, governedShare, advanceDay, applySpeech, callElection } from "../../src/game/al_world";
+import { startSpeech, autoplay, bestCard } from "../../src/game/al_speech";
+import { newStreet, persuade, tryRecruit } from "../../src/game/al_street";
+import { makeRng } from "../../src/game/al_rng";
+import { Controller, stick } from "../../src/game/al_controller";
+import { newBody, stepBody, NO_PLAYER_INPUT } from "../../src/game/al_player";
+import { housingUnits, trafficCount, trafficPose, TRAFFIC_LIMIT } from "../../src/game/al_traffic";
+import { buildFlyingCar } from "../../src/game/al_models";
+import { parkBeside, newCar, stepCar, landingClear, flightClear, carGround, type FlightEnvironment } from "../../src/game/al_vehicle";
+
+describe("Personal multicopter flight", () => {
+    const flat: FlightEnvironment = { height: () => 0, sea: () => false, buildings: [] };
+    const advance = (c: ReturnType<typeof newCar>, input = NO_PLAYER_INPUT, seconds = 1, env = flat, descend = false) => {
+        for (let i = 0; i < seconds * 60; i++) stepCar(c, input, descend, 1 / 60, env);
+    };
+    it("requires a pilot, takes off, brakes to a hover and lands", () => {
+        const c = newCar({ x: 0, z: 0, y: 0.22, yaw: 0 });
+        advance(c, { ...NO_PLAYER_INPUT, jump: true }); expect(c.y).toBe(0.22);
+        c.piloting = true;
+        advance(c, { ...NO_PLAYER_INPUT, forward: true }); expect(c.z).toBe(0);
+        advance(c, { ...NO_PLAYER_INPUT, jump: true }, 2); expect(c.y).toBeGreaterThan(12);
+        advance(c, { ...NO_PLAYER_INPUT, forward: true }, 1); expect(c.z).toBeGreaterThan(10);
+        advance(c, NO_PLAYER_INPUT, 3);
+        const p = [c.x, c.y, c.z]; advance(c);
+        expect(Math.hypot(c.x - p[0], c.y - p[1], c.z - p[2])).toBeLessThan(0.01);
+        expect(c.state).toBe("hovering");
+        c.state = "landing"; advance(c, NO_PLAYER_INPUT, 10);
+        expect(c.state).toBe("parked"); expect(c.y).toBeCloseTo(0.22);
+    });
+    it("flies forward on positive controller Y and steers on right-stick X", () => {
+        const c = newCar({ x: 0, z: 0, y: 20, yaw: 0 }); c.piloting = true;
+        advance(c, { ...NO_PLAYER_INPUT, moveY: 0.5 }, 1);
+        expect(c.z).toBeGreaterThan(5); expect(c.x).toBe(0);
+        advance(c, { ...NO_PLAYER_INPUT, lookX: 0.5 }, 1);
+        expect(c.yaw).toBeGreaterThan(0.7);
+    });
+    it("blocks the entire rotor footprint at walls and roofs but flies above them", () => {
+        const env = { ...flat, buildings: [{ cx: 0, cz: 10, ux: 1, uz: 0, hw: 3, hd: 0.1, height: 12, base: 0, key: "wall", door: [0, 0] as [number, number] }] };
+        const c = newCar({ x: 0, z: 0, y: 5, yaw: 0 }); c.piloting = true;
+        advance(c, { ...NO_PLAYER_INPUT, forward: true, sprint: true }, 2, env);
+        expect(c.z).toBeLessThan(6.9);
+        expect(flightClear({ ...c, z: 10, y: 12 }, env)).toBe(false);
+        advance(c, { ...NO_PLAYER_INPUT, jump: true }, 2, env);
+        advance(c, { ...NO_PLAYER_INPUT, forward: true }, 2, env); expect(c.z).toBeGreaterThan(20);
+    });
+    it("flies over water but refuses water, steep slopes and buildings for landing", () => {
+        const c = newCar({ x: 0, z: 0, y: 20, yaw: 0 }); c.piloting = true;
+        const water = { ...flat, sea: () => true };
+        advance(c, { ...NO_PLAYER_INPUT, forward: true }, 1, water); expect(c.z).toBeGreaterThan(10);
+        expect(landingClear(c, water)).toBe(false);
+        expect(landingClear(c, { ...flat, height: x => x })).toBe(false);
+        expect(landingClear(c, { ...flat, buildings: [{ cx: c.x, cz: c.z, ux: 1, uz: 0, hw: 1, hd: 1, height: 5, base: 0, key: "house", door: [0, 0] }] })).toBe(false);
+        expect(landingClear(c, flat)).toBe(true);
+    });
+    it("uses terrain under all rotors and stays above sloping ground", () => {
+        const env = { ...flat, height: (x: number) => x * 0.1 };
+        expect(carGround(0, 0, env.height)).toBeCloseTo(0.52);
+        const c = newCar({ x: 0, z: 0, y: 0.52, yaw: 0 }); c.piloting = true;
+        advance(c, { ...NO_PLAYER_INPUT, jump: true }, 1, env);
+        expect(c.y).toBeGreaterThan(6); expect(landingClear(c, env)).toBe(true);
+    });
+    it("descends on controller input, respects the ceiling, and preserves saved flight", () => {
+        const c = newCar({ x: 0, z: 0, y: 498, yaw: 0 }); c.piloting = true;
+        advance(c, { ...NO_PLAYER_INPUT, jump: true }, 2); expect(c.y).toBeLessThanOrEqual(500.22);
+        advance(c, NO_PLAYER_INPUT, 2, flat, true); expect(c.y).toBeLessThan(490);
+        const restored = JSON.parse(JSON.stringify(c));
+        advance(restored, NO_PLAYER_INPUT, 3); expect(restored.state).toBe("hovering");
+        expect(restored.piloting).toBe(true);
+    });
+});
+
+const hometown = { name: "Levittown", kind: "town", lat: 40.7259, lon: -73.5143 };
+describe("Iteration 1 settlement campaigns", () => {
+    it("starts at a hometown outside the fixed list, preserving exact coordinates and founding members", () => {
+        const c = newCampaign({ seed: 17, hometown });
+        const d = regionDefById(c.party.hq)!;
+        expect(d.name).toBe("Levittown");
+        expect(d.pop).toBe(0.015);
+        expect(c.player.lat).toBe(hometown.lat);
+        expect(c.player.lon).toBe(hometown.lon);
+        expect(c.regions[d.id].members).toBe(5);
+        expect(c.members.every(m => m.region === d.id)).toBe(true);
+        expect(regionAt(hometown.lat, hometown.lon, c).id).toBe(d.id);
+        expect(campaignRegions(c).reduce((n, d) => n + d.pop, 0)).toBeCloseTo(WORLD_POPULATION, 8);
+    });
+    it("discovers neighboring places once, with independent conquest and daily simulation", () => {
+        const c = newCampaign({ seed: 17, hometown });
+        const home = regionDefById(c.party.hq)!;
+        const other = discoverSettlement(c, { name: "Bethpage", kind: "village", lat: 40.7443, lon: -73.4821 });
+        expect(discoverSettlement(c, { ...hometown, lat: hometown.lat + 0.0001 }).id).toBe(home.id);
+        expect(c.settlements).toHaveLength(2);
+        takeRegion(c, c.regions[home.id], "election");
+        expect(c.regions[other.id].governor).not.toBe(PARTY);
+        expect(c.regions[home.parent!].governor).not.toBe(PARTY);
+        expect(governedShare(c)).toBeCloseTo(home.pop / WORLD_POPULATION, 12);
+        expect(neighbors(home.id, 4, c)).toContain(other.id);
+        const countdown = c.regions[other.id].electionIn;
+        advanceDay(c);
+        expect(c.regions[other.id].electionIn).toBe(countdown - 1);
+        expect(campaignRegions(c).reduce((n, d) => n + d.pop, 0)).toBeCloseTo(WORLD_POPULATION, 8);
+    });
+    it("keeps a newly discovered town independent after its surrounding territory falls", () => {
+        const c = newCampaign({ spawn: "new-york" });
+        takeRegion(c, c.regions["new-york"], "election");
+        const d = discoverSettlement(c, hometown);
+        expect(c.regions[d.id].governor).not.toBe(PARTY);
+        const city = discoverSettlement(c, { name: "New York", lat: 40.7128, lon: -74.006, kind: "city" });
+        expect(city.id).not.toBe("new-york");
+        expect(city.parent).toBe("new-york");
+    });
+    it("round-trips discovered governments, coordinates and recruitment through a save", () => {
+        const c = newCampaign({ seed: 17, hometown });
+        c.regions[c.party.hq].support[PARTY] = 0.4;
+        takeRegion(c, c.regions[c.party.hq], "election");
+        const loaded = restoreSettlements(JSON.parse(JSON.stringify(c)));
+        expect(regionAt(hometown.lat, hometown.lon, loaded).id).toBe(c.party.hq);
+        expect(loaded).toEqual(c);
+        expect(newCampaign({ spawn: "london" }).settlements).toEqual([]);
+    });
+    it("assigns future countries to their territories and local settlements", () => {
+        expect(regionDefById("los-angeles")!.country).toBe("New America");
+        expect(regionDefById("new-york")!.country).toBe("The Workers States of America");
+        expect(REGIONS.some(d => ["USA", "Britain", "France"].includes(d.country))).toBe(false);
+        const c = newCampaign({ hometown });
+        const d = regionDefById(c.party.hq)!;
+        expect(d.country).toBe(regionDefById(d.parent!)!.country);
+        expect(c.regions[d.id].governor).toBe(countryOf(d).ruler);
+    });
+    it("lets every opposition ideology grow support and petition for a vote in a workers territory", () => {
+        for (const ideology of ["solidarity", "order", "liberty", "ascendancy"]) {
+            const c = newCampaign({ seed: 7, hometown, ideology });
+            const before = partyShare(c.regions[c.party.hq]);
+            for (let i = 0; i < 25; i++) {
+                const speech = startSpeech({ region: c.party.hq, ideology, oratory: 2, persuasion: 2, crowd: 30, seed: i });
+                const result = autoplay(speech, bestCard, "perfect", true);
+                applySpeech(c, c.party.hq, { score: result.score, crowd: result.crowd, joined: result.joined, karma: result.karma });
+                advanceDay(c);
+            }
+            expect(partyShare(c.regions[c.party.hq])).toBeGreaterThan(before + 0.2);
+            c.regions[c.party.hq].electionIn = 30;
+            expect(callElection(c, c.party.hq)).toBeNull();
+        }
+    });
+    it("makes persuasion and recruitment achievable without prior regional support", () => {
+        const actor = newStreet().player;
+        actor.kind = "civilian"; actor.opinion = -0.5;
+        const rng = makeRng(12);
+        for (let i = 0; i < 100; i++) { actor.talkCooldown = 0; persuade(actor, 0, rng); }
+        expect(actor.opinion).toBeGreaterThan(0.6);
+        let joined = false;
+        for (let i = 0; i < 20 && !joined; i++) joined = tryRecruit(actor, 0, rng);
+        expect(joined).toBe(true);
+    });
+    it("rejects invalid coordinates without creating political territory", () => {
+        const c = newCampaign();
+        expect(() => discoverSettlement(c, { ...hometown, lat: NaN })).toThrow();
+        expect(() => discoverSettlement(c, { ...hometown, lon: 181 })).toThrow();
+        expect(c.settlements).toEqual([]);
+    });
+});
+
+describe("Iteration 1 controller and traffic", () => {
+    it("parks a car beside the player with room for the rotors, avoiding buildings and steep ground", () => {
+        const walkable = (x: number, z: number) => !(x > -4 && x < 4 && z > 1 && z < 12);
+        const parked = parkBeside(0, 0, walkable, () => 10)!;
+        expect(parked).not.toBeNull();
+        expect(Math.hypot(parked.car.x - parked.player[0], parked.car.z - parked.player[1])).toBeCloseTo(4.8);
+        for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
+            if (dx * dx + dz * dz <= 12.25) expect(walkable(parked.car.x + dx, parked.car.z + dz)).toBe(true);
+        }
+        expect(parkBeside(0, 0, () => false, () => 0)).toBeNull();
+        expect(parkBeside(0, 0, () => true, x => x * 2)).toBeNull();
+    });
+    it("filters drift, retains analog movement speed, and applies look", () => {
+        expect(stick([0.1, 0.05])).toEqual([0, 0]);
+        const half = newBody(), full = newBody();
+        stepBody(half, { ...NO_PLAYER_INPUT, moveY: 0.5, lookX: 0.25 }, 0.1, null, () => 0);
+        stepBody(full, { ...NO_PLAYER_INPUT, moveY: 1 }, 0.1, null, () => 0);
+        expect(Math.hypot(half.x, half.z)).toBeCloseTo(Math.hypot(full.x, full.z) / 2);
+        expect(half.yaw).toBeGreaterThan(0);
+    });
+    it("distinguishes presses from held buttons and clears stale input", () => {
+        const pad = new Controller();
+        pad.axis([0, 1], [1, 0], 2);
+        expect(pad.button("RightTrigger2", true)).toBe(true);
+        expect(pad.button("RightTrigger2", true)).toBe(false);
+        expect(pad.button("RightTrigger2", false)).toBe(false);
+        expect(pad.button("RightTrigger2", true)).toBe(true);
+        pad.expire(2.6);
+        expect(pad.left).toEqual([0, 0]); expect(pad.held.size).toBe(0);
+    });
+    it("uses sparse housing-based traffic and puts hover vehicles above roofs", () => {
+        expect(trafficCount(0)).toBe(0);
+        expect(housingUnits([{ kind: "box", width: 30, depth: 30, height: 45 }])).toBeGreaterThan(housingUnits([{ kind: "house", width: 12, depth: 10, height: 6 }]));
+        expect(trafficCount(5)).toBeLessThan(trafficCount(500));
+        expect(trafficCount(100000)).toBe(TRAFFIC_LIMIT);
+        const a = trafficPose(0, 0, 0, 0, 80), b = trafficPose(0, 10, 0, 0, 80);
+        expect(a.x).toBe(b.x); expect(a.z).toBe(b.z); expect(a.y).toBeGreaterThan(100);
+        expect(trafficPose(1, 0, 0, 0, 80).x).not.toBe(trafficPose(1, 10, 0, 0, 80).x);
+        expect(buildFlyingCar().indexData.length).toBeGreaterThan(100);
+    });
+});

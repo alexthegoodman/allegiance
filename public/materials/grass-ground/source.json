@@ -1,0 +1,15 @@
+{
+  "archive": "grass-ground.zip",
+  "material": "grass-ground",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "3vJUJz7iwXAm0TVWVypYA_uSNgH1K3.png",
+    "basecolor": "IMgBvBJfbiLO2Gy3eV0sD_9REQj94n.png",
+    "normal": "xNcoLMXpsVfnHaGFJZgoU_ycVYK2oP.png",
+    "roughness": "klYoxcocQVufzaOZhbiQK_mCH1P3x3.png",
+    "metallic": "BlAGBpkpuo604Ikm1JyMw_kj69Rasj.png",
+    "height": "6RRgiIWh3yvkCPjhiu5-__0YBx4zIo.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

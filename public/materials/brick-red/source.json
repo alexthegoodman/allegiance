@@ -1,0 +1,15 @@
+{
+  "archive": "brick-red.zip",
+  "material": "brick-red",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "aDI-e-hkdMnV3jXYSwCNu_PLcJ1B52.png",
+    "basecolor": "BHIJh4OZFESMq-wLKRBxt_2mUb5nSh.png",
+    "normal": "LNtn2yCVwLAL6HXGabrDL_mz9zkvHX.png",
+    "roughness": "t8flTTLiUYOJoUhjPE2BV_cth9nvH5.png",
+    "metallic": "aJGqOrpzmknu_1FPc9F7O_NLCQahCG.png",
+    "height": "pGGH9iRazVDriUBIzr6gx_moAbmTlZ.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

@@ -1,0 +1,15 @@
+{
+  "archive": "concrete.zip",
+  "material": "concrete",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "ztLqMewXSZt_arj9ZmyIZ_rMPGjbXa.png",
+    "basecolor": "aHnmeRDC6s2jHOadxe0ZB_5wFqUZjo.png",
+    "normal": "XmO_JtY1aihX8REKqcTu-_fxOUavw3.png",
+    "roughness": "PmAngJ-hrmth-aF6Wcy-q_yFLuaLL4.png",
+    "metallic": "i-yVC2PeFaX5xBmi_MlQb_GUN0z98p.png",
+    "height": "ntKZT4LgZ8qXQxyg2lwDt_DGXMvo99.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

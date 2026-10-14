@@ -1,0 +1,15 @@
+{
+  "archive": "snow.zip",
+  "material": "snow",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "MmHHA79sWzPoktnDgbi5y_unWI1uk2.png",
+    "basecolor": "nSghjoe3un58rG2wcH_ME_sFOrdTjK.png",
+    "normal": "5Zzijb47Zp_31owOMBJlY_qcqGnboA.png",
+    "roughness": "OrQs_hWlt3hirgiNEFizA_CLXMY2wW.png",
+    "metallic": "6yB7OzypQKB-guhbzdEIk_Kd2cOZBC.png",
+    "height": "6fq2V4Zu5WR288KxRA6TK_csVlFO2w.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

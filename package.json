@@ -1,0 +1,32 @@
+{
+  "name": "allegiance",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Allegiance: a political conquest game on the full-scale Earth of 2100, in Babylon.js",
+  "author": "Alex Woodman <alexthegoodman@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "test:bdd": "node tests/bdd/run.mjs",
+    "materials": "node scripts/materials.mjs"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.30.0",
+    "gl-matrix": "3.4.4",
+    "meshoptimizer": "1.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "25.0.3",
+    "playwright": "1.64.1",
+    "sharp": "0.34.4",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vitest": "4.0.16"
+  }
+}

@@ -1,0 +1,71 @@
+// Mesha's procedural object library. Each entry is a plain-data ObjectDef (JSON-serializable, see
+// tests/mesha.test.ts); components are building blocks other objects compose.
+
+import type { ObjectDef } from "../mesha_object";
+import leg from "./leg";
+import table from "./table";
+import bottle from "./bottle";
+import gear from "./gear";
+import bolt from "./bolt";
+import rock, { rockPiece } from "./rock";
+import officeChair, { caster } from "./office_chair";
+import mug from "./mug";
+import tableLamp from "./table_lamp";
+import coffeeMaker from "./coffee_maker";
+import domeBuilding from "./dome_building";
+import { windowDef, facadeDef } from "./architecture";
+import doorDef from "./door";
+import houseDef from "./house";
+import habLodgeDef from "./hab_lodge";
+import wastelandDepotDef from "./wasteland_depot";
+import arcaneEmporiumDef from "./arcane_emporium";
+import streetCarDef from "./street_car";
+import cityBlockDef from "./city_block";
+import treeDef from "./tree";
+import coniferDef from "./conifer";
+import palmDef from "./palm";
+import fernDef from "./fern";
+import shrubDef from "./shrub";
+import grassDef from "./grass";
+import flowersDef from "./flowers";
+import pottedPlantDef from "./potted_plant";
+import humanDef from "./human";
+import { handle, hinge } from "./hardware";
+import cabinet from "./cabinet";
+import chair from "./chair";
+import book from "./book";
+import shelving from "./shelving";
+import crate from "./crate";
+import dish from "./dish";
+import sofa from "./sofa";
+import bed from "./bed";
+import fence from "./fence";
+import stair from "./stair";
+import streetlight from "./streetlight";
+import pipe from "./pipe";
+import rustDome from "./rust_dome";
+import wreckCar from "./wreck_car";
+import utilityPole from "./utility_pole";
+import barrel from "./barrel";
+import barricade from "./barricade";
+import ruin from "./ruin";
+import container from "./container";
+import wastelandGround from "./wasteland_ground";
+import gunship from "./gunship";
+import caveDwelling from "./cave_dwelling";
+import riverShrine from "./river_shrine";
+import combatArmor from "./combat_armor";
+import wardenGarb from "./warden_garb";
+import { coilRifleDef, meleeWeaponDef } from "./weapons";
+import crystalCluster from "./crystal";
+import behemoth from "./behemoth";
+import skywing from "./skywing";
+
+export const LIBRARY: ObjectDef[] = [humanDef, combatArmor, wardenGarb, officeChair, table, cabinet, chair, sofa, bed, shelving, bottle, mug, dish, book, crate, tableLamp, coffeeMaker, pottedPlantDef, domeBuilding, rustDome, houseDef, ruin, caveDwelling, riverShrine, habLodgeDef, wastelandDepotDef, arcaneEmporiumDef, cityBlockDef, streetCarDef, wreckCar, gunship, container, streetlight, utilityPole, barrel, barricade, wastelandGround, windowDef, doorDef, facadeDef, fence, stair, gear, bolt, pipe, coilRifleDef, meleeWeaponDef, treeDef, coniferDef, palmDef, fernDef, shrubDef, grassDef, flowersDef, rock, crystalCluster, skywing, behemoth, leg, rockPiece, caster, handle, hinge];
+
+const BY_ID = new Map(LIBRARY.map(d => [d.id, d]));
+
+export const lookupObject = (id: string): ObjectDef | undefined => BY_ID.get(id);
+
+/** What Add Object lists: everything but components. */
+export const browsableObjects = (): ObjectDef[] => LIBRARY.filter(d => !d.component);

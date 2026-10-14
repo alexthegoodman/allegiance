@@ -1,0 +1,15 @@
+{
+  "archive": "stucco.zip",
+  "material": "stucco",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "rMK_bx8XemKxgqrwhXaem_NnOnTedj.png",
+    "basecolor": "6qYy9UCgnkL1GJywgc_H2_GIuQR6bX.png",
+    "normal": "ZA5UgrZkrBM_Sp53Ui_tq_E54dsjsP.png",
+    "roughness": "kKJgZGgjbHCnRH2Qv8heR_36ZKfIyU.png",
+    "metallic": "cwt3BNBjsTNfKT8pfay2I_8OejzMAj.png",
+    "height": "Nrov88rC4VhCH-HKDAp68_DcO9neTg.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

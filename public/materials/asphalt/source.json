@@ -1,0 +1,15 @@
+{
+  "archive": "asphalt.zip",
+  "material": "asphalt",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "ziihydH7CAZz_oIHh4oSS_Sjk66fR4.png",
+    "basecolor": "TfQrUwjYI2wdvNwByWE9K_vUOXA1zN.png",
+    "normal": "1wxXhFs_xjyagyzBT07xM_alLGRGzu.png",
+    "roughness": "PAtzmDkZf9FPtMCp_gaBU_0fAjf3B0.png",
+    "metallic": "P8X4kMIlDQJT8GsJMXq7v_yYB5O4EO.png",
+    "height": "PYDt8SD-eLyy2RQR4Xtbm_Hz5pQibc.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}

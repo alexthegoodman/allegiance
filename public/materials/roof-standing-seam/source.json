@@ -1,0 +1,15 @@
+{
+  "archive": "roof-standing-seam.zip",
+  "material": "roof-standing-seam",
+  "generator": "fal-ai/patina/material",
+  "maps": {
+    "preview": "rg1FNeqwKgim3QOToMh0F_sP7hsOUn.png",
+    "basecolor": "AnlWvQbojcUVbHFbVfRRf_7D36XAEb.png",
+    "normal": "sLE7Q-zPTiu5aCU0Eg2VF_qrkcqZbE.png",
+    "roughness": "kHog7B5nQImlaFoPKNKyH_EuSJVyOK.png",
+    "metallic": "tQI_FEmBnVXotlDml-YZF_rbK6Ymct.png",
+    "height": "5cYjB0f8bA1ozYShxV7Yp_vXpPRvtb.png"
+  },
+  "identification": "Material name supplied by owner. Maps identified visually: generated preview, basecolor, normal, roughness, metalness, height. No README or map metadata in archive.",
+  "tileMeters": "Estimated in al_materials.ts; not supplied by archive"
+}
