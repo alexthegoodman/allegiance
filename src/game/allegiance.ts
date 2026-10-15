@@ -1340,7 +1340,7 @@ let crowd: CrowdBatches | null = null;
 /** Scales people's LOD distances (allegiance_config peopleDetail): lower is faster. */
 let peopleDetail = 0.5;
 /** Caps drawn people's cost (allegiance_config peopleMaxFull / peopleTriangles). */
-let peopleBudget: PeopleBudget = { maxFull: 2, triangleBudget: 1_200_000 };
+let peopleBudget: PeopleBudget = { maxFull: 2, triangleBudget: 600_000 };
 /** People per level of detail last frame (including you), for the state report. */
 let lodCounts: [number, number, number] = [0, 0, 0];
 
@@ -2404,8 +2404,8 @@ function stream(maxBuilds: number, maxMs: number): void {
  */
 const HOUSE_LOD = { lod0Radius: 20, maxLod0: 1, lod1Radius: 140, triangleBudget: 800_000 };
 const HOUSE_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 140, triangleBudget: 600_000 };
-const BUILDING_LOD = { lod0Radius: 35, maxLod0: 8, lod1Radius: 300, triangleBudget: 1_200_000 };
-const BUILDING_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 300, triangleBudget: 1_000_000 };
+const BUILDING_LOD = { lod0Radius: 35, maxLod0: 8, lod1Radius: 300, triangleBudget: 600_000 };
+const BUILDING_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 300, triangleBudget: 500_000 };
 type LodLimits = typeof HOUSE_LOD;
 /** On-foot limits set by allegiance_config (houseLod / buildingLod); null: the defaults above. */
 let houseLod: LodLimits | null = null;
