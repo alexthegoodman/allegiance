@@ -81,19 +81,19 @@ export class MobileControls {
     private initJoysticks(): void {
         if (this.leftStick && this.rightStick) return;
         try {
-            // Left virtual joystick for movement (gold theme color)
+            // Left virtual joystick for movement (gold theme color, compact for mobile landscape)
             this.leftStick = new VirtualJoystick(true, {
                 color: "#ffc83b",
-                containerSize: 62,
-                puckSize: 30,
+                containerSize: 50,
+                puckSize: 25,
                 limitToContainer: true,
             });
 
             // Right virtual joystick for looking/aiming (neutral translucent white)
             this.rightStick = new VirtualJoystick(false, {
                 color: "rgba(255, 255, 255, 0.45)",
-                containerSize: 62,
-                puckSize: 30,
+                containerSize: 50,
+                puckSize: 25,
                 limitToContainer: true,
             });
 
@@ -205,6 +205,7 @@ export class MobileControls {
 
     /**
      * Creates the touch action buttons and HUD overlays for mobile devices.
+     * Optimized for mobile landscape mode with low-profile thumb arcs and responsive scaling.
      */
     private createMobileHud(): void {
         if (typeof document === "undefined") return;
@@ -220,65 +221,252 @@ export class MobileControls {
             user-select: none;
             -webkit-user-select: none;
             touch-action: none;
-            padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
             box-sizing: border-box;
         `;
 
-        // Inner HTML with right cluster buttons, top bar, and helpers
+        // Inner HTML with right cluster buttons, top bar, responsive landscape styles and helpers
         root.innerHTML = `
-            <!-- Top bar quick actions -->
-            <div style="position: absolute; top: max(10px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none;">
-                <!-- Left top: Command / Menu -->
-                <div style="display: flex; gap: 8px; pointer-events: auto;">
+            <style>
+                #allegiance-mobile-controls * {
+                    box-sizing: border-box;
+                    -webkit-tap-highlight-color: transparent;
+                }
+                #al-m-top-bar {
+                    position: absolute;
+                    top: max(6px, env(safe-area-inset-top));
+                    left: max(10px, env(safe-area-inset-left));
+                    right: max(10px, env(safe-area-inset-right));
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    pointer-events: none;
+                    z-index: 25;
+                }
+                #al-m-left-hint {
+                    position: absolute;
+                    bottom: max(14px, env(safe-area-inset-bottom));
+                    left: max(16px, env(safe-area-inset-left));
+                    width: 100px;
+                    height: 100px;
+                    border: 2px dashed rgba(255, 200, 59, 0.25);
+                    border-radius: 50%;
+                    pointer-events: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: rgba(255, 200, 59, 0.35);
+                    font: 10px Bungee, sans-serif;
+                }
+                #al-m-right-cluster {
+                    position: absolute;
+                    bottom: max(8px, env(safe-area-inset-bottom));
+                    right: max(10px, env(safe-area-inset-right));
+                    width: 240px;
+                    height: 122px;
+                    pointer-events: none;
+                }
+                #al-m-right-cluster button {
+                    pointer-events: auto;
+                    touch-action: none;
+                    outline: none;
+                }
+                #al-m-top-bar button {
+                    pointer-events: auto;
+                    touch-action: none;
+                    outline: none;
+                    height: 28px;
+                }
+                /* Compact landscape mode for low-height mobile devices (e.g. <= 380px) */
+                @media (max-height: 380px) {
+                    #al-m-top-bar {
+                        top: max(4px, env(safe-area-inset-top));
+                    }
+                    #al-m-top-bar button {
+                        height: 24px !important;
+                        font-size: 9px !important;
+                        padding: 0 6px !important;
+                    }
+                    #al-m-weapon {
+                        max-width: 130px !important;
+                    }
+                    #al-m-left-hint {
+                        width: 84px !important;
+                        height: 84px !important;
+                        font-size: 9px !important;
+                        bottom: max(8px, env(safe-area-inset-bottom)) !important;
+                        left: max(10px, env(safe-area-inset-left)) !important;
+                    }
+                    #al-m-right-cluster {
+                        width: 215px !important;
+                        height: 108px !important;
+                        bottom: max(4px, env(safe-area-inset-bottom)) !important;
+                        right: max(6px, env(safe-area-inset-right)) !important;
+                    }
+                    #al-m-fire {
+                        width: 54px !important;
+                        height: 54px !important;
+                        font-size: 11px !important;
+                        bottom: 2px !important;
+                        right: 2px !important;
+                    }
+                    #al-m-jump {
+                        width: 42px !important;
+                        height: 42px !important;
+                        font-size: 10px !important;
+                        bottom: 6px !important;
+                        right: 64px !important;
+                    }
+                    #al-m-reload, #al-m-descend {
+                        width: 38px !important;
+                        height: 38px !important;
+                        font-size: 8px !important;
+                        bottom: 8px !important;
+                        right: 112px !important;
+                    }
+                    #al-m-interact {
+                        height: 38px !important;
+                        min-width: 48px !important;
+                        font-size: 10px !important;
+                        bottom: 60px !important;
+                        right: 4px !important;
+                    }
+                    #al-m-ads {
+                        width: 38px !important;
+                        height: 38px !important;
+                        font-size: 9px !important;
+                        bottom: 54px !important;
+                        right: 64px !important;
+                    }
+                    #al-m-land {
+                        width: 38px !important;
+                        height: 38px !important;
+                        font-size: 8px !important;
+                        bottom: 52px !important;
+                        right: 112px !important;
+                    }
+                }
+                /* Ultra-compact landscape mode for phones with browser chrome (height <= 330px) */
+                @media (max-height: 330px) {
+                    #al-m-right-cluster {
+                        width: 195px !important;
+                        height: 96px !important;
+                    }
+                    #al-m-fire {
+                        width: 48px !important;
+                        height: 48px !important;
+                        font-size: 10px !important;
+                    }
+                    #al-m-jump {
+                        width: 36px !important;
+                        height: 36px !important;
+                        font-size: 9px !important;
+                        right: 56px !important;
+                    }
+                    #al-m-reload, #al-m-descend {
+                        width: 34px !important;
+                        height: 34px !important;
+                        right: 98px !important;
+                    }
+                    #al-m-interact {
+                        height: 32px !important;
+                        min-width: 42px !important;
+                        font-size: 9px !important;
+                        bottom: 52px !important;
+                    }
+                    #al-m-ads {
+                        width: 32px !important;
+                        height: 32px !important;
+                        bottom: 46px !important;
+                        right: 56px !important;
+                    }
+                    #al-m-land {
+                        width: 32px !important;
+                        height: 32px !important;
+                        bottom: 44px !important;
+                        right: 98px !important;
+                    }
+                }
+            </style>
+
+            <!-- Top bar quick actions: streamlined, low-profile horizontal bar -->
+            <div id="al-m-top-bar" style="
+                position: absolute;
+                top: max(6px, env(safe-area-inset-top));
+                left: max(10px, env(safe-area-inset-left));
+                right: max(10px, env(safe-area-inset-right));
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                pointer-events: none;
+            ">
+                <!-- Left top: Command & Heal -->
+                <div style="display: flex; gap: 6px; pointer-events: auto;">
                     <button id="al-m-command" style="
                         background: #110e0e;
                         color: #ffc83b;
-                        border: 2px solid #ffc83b;
+                        border: 1.5px solid #ffc83b;
                         border-radius: 4px;
-                        font: 12px Bungee, sans-serif;
-                        padding: 6px 12px;
+                        font: 11px Bungee, sans-serif;
+                        height: 28px;
+                        padding: 0 10px;
                         cursor: pointer;
                         box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+                        white-space: nowrap;
                     ">COMMAND</button>
                     <button id="al-m-heal" style="
                         background: #110e0e;
                         color: #4ade80;
-                        border: 2px solid #4ade80;
+                        border: 1.5px solid #4ade80;
                         border-radius: 4px;
-                        font: 12px Bungee, sans-serif;
-                        padding: 6px 10px;
+                        font: 11px Bungee, sans-serif;
+                        height: 28px;
+                        padding: 0 8px;
                         cursor: pointer;
+                        box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+                        white-space: nowrap;
                     ">+ HEAL</button>
                 </div>
 
-                <!-- Right top: View, Weapon Cycle, Fullscreen -->
-                <div style="display: flex; gap: 8px; align-items: center; pointer-events: auto;">
+                <!-- Right top: Weapon, View, Fullscreen -->
+                <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
                     <button id="al-m-weapon" style="
                         background: #1a1616;
                         color: #ebdcb8;
-                        border: 2px solid #666;
+                        border: 1.5px solid #666;
                         border-radius: 4px;
                         font: 11px Play, sans-serif;
-                        padding: 6px 10px;
                         font-weight: bold;
+                        height: 28px;
+                        padding: 0 8px;
                         cursor: pointer;
+                        white-space: nowrap;
+                        max-width: 170px;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
                     ">WEAPON ⟳</button>
                     <button id="al-m-view" style="
                         background: #110e0e;
                         color: #ebdcb8;
-                        border: 2px solid #666;
+                        border: 1.5px solid #666;
                         border-radius: 4px;
-                        font: 12px Bungee, sans-serif;
-                        padding: 6px 10px;
+                        font: 11px Bungee, sans-serif;
+                        height: 28px;
+                        padding: 0 8px;
                         cursor: pointer;
+                        white-space: nowrap;
                     ">1P/3P</button>
                     <button id="al-m-fullscreen" style="
                         background: #110e0e;
                         color: #ffc83b;
-                        border: 2px solid #ffc83b;
+                        border: 1.5px solid #ffc83b;
                         border-radius: 4px;
-                        font: 14px sans-serif;
-                        padding: 4px 8px;
+                        font: 13px sans-serif;
+                        height: 28px;
+                        width: 30px;
+                        padding: 0;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
                         cursor: pointer;
                     ">⛶</button>
                 </div>
@@ -287,62 +475,40 @@ export class MobileControls {
             <!-- Left thumb zone hint -->
             <div id="al-m-left-hint" style="
                 position: absolute;
-                bottom: max(30px, env(safe-area-inset-bottom));
-                left: max(30px, env(safe-area-inset-left));
-                width: 124px;
-                height: 124px;
+                bottom: max(14px, env(safe-area-inset-bottom));
+                left: max(16px, env(safe-area-inset-left));
+                width: 100px;
+                height: 100px;
                 border: 2px dashed rgba(255, 200, 59, 0.25);
                 border-radius: 50%;
                 pointer-events: none;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: rgba(255, 200, 59, 0.4);
-                font: 11px Bungee, sans-serif;
+                color: rgba(255, 200, 59, 0.35);
+                font: 10px Bungee, sans-serif;
             ">MOVE</div>
 
-            <!-- Right thumb action buttons cluster -->
+            <!-- Right thumb action buttons cluster: ergonomic low-profile thumb arc -->
             <div id="al-m-right-cluster" style="
                 position: absolute;
-                bottom: max(20px, env(safe-area-inset-bottom));
-                right: max(16px, env(safe-area-inset-right));
-                width: 220px;
-                height: 220px;
+                bottom: max(8px, env(safe-area-inset-bottom));
+                right: max(10px, env(safe-area-inset-right));
+                width: 240px;
+                height: 122px;
                 pointer-events: none;
             ">
                 <!-- Fire button (Primary, bottom-right) -->
                 <button id="al-m-fire" style="
                     position: absolute;
-                    bottom: 10px;
-                    right: 10px;
-                    width: 72px;
-                    height: 72px;
+                    bottom: 4px;
+                    right: 4px;
+                    width: 62px;
+                    height: 62px;
                     border-radius: 50%;
                     background: radial-gradient(circle, #e62229 0%, #8f0d11 100%);
                     color: #fff8e6;
-                    border: 3px solid #ffc83b;
-                    font: 15px Bungee, sans-serif;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    cursor: pointer;
-                    pointer-events: auto;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.7);
-                    outline: none;
-                ">FIRE</button>
-
-                <!-- Interact / Contextual button (Above Fire) -->
-                <button id="al-m-interact" style="
-                    position: absolute;
-                    bottom: 95px;
-                    right: 15px;
-                    min-width: 60px;
-                    height: 60px;
-                    border-radius: 30px;
-                    padding: 0 14px;
-                    background: #1b2636;
-                    color: #ffc83b;
-                    border: 2px solid #ffc83b;
+                    border: 2.5px solid #ffc83b;
                     font: 13px Bungee, sans-serif;
                     display: flex;
                     align-items: center;
@@ -351,21 +517,43 @@ export class MobileControls {
                     pointer-events: auto;
                     box-shadow: 0 4px 10px rgba(0,0,0,0.6);
                     outline: none;
+                ">FIRE</button>
+
+                <!-- Interact / Contextual button (Above Fire along thumb arc) -->
+                <button id="al-m-interact" style="
+                    position: absolute;
+                    bottom: 72px;
+                    right: 6px;
+                    min-width: 56px;
+                    height: 42px;
+                    border-radius: 21px;
+                    padding: 0 10px;
+                    background: #1b2636;
+                    color: #ffc83b;
+                    border: 2px solid #ffc83b;
+                    font: 11px Bungee, sans-serif;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    pointer-events: auto;
+                    box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+                    outline: none;
                     white-space: nowrap;
                 ">USE</button>
 
-                <!-- Jump / Rise button (Left of Fire) -->
+                <!-- Jump / Rise button (Left of Fire along bottom row) -->
                 <button id="al-m-jump" style="
                     position: absolute;
-                    bottom: 15px;
-                    right: 95px;
-                    width: 54px;
-                    height: 54px;
+                    bottom: 8px;
+                    right: 74px;
+                    width: 48px;
+                    height: 48px;
                     border-radius: 50%;
                     background: #1f1b1b;
                     color: #f5ead0;
                     border: 2px solid #ebdcb8;
-                    font: 12px Bungee, sans-serif;
+                    font: 11px Bungee, sans-serif;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -375,18 +563,18 @@ export class MobileControls {
                     outline: none;
                 ">JUMP</button>
 
-                <!-- ADS button (Diagonal from Fire) -->
+                <!-- ADS button (Above Jump along thumb arc) -->
                 <button id="al-m-ads" style="
                     position: absolute;
-                    bottom: 85px;
-                    right: 95px;
-                    width: 48px;
-                    height: 48px;
+                    bottom: 62px;
+                    right: 72px;
+                    width: 42px;
+                    height: 42px;
                     border-radius: 50%;
                     background: #161414;
                     color: #ebdcb8;
                     border: 2px solid #888;
-                    font: 11px Bungee, sans-serif;
+                    font: 10px Bungee, sans-serif;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -395,18 +583,18 @@ export class MobileControls {
                     outline: none;
                 ">ADS</button>
 
-                <!-- Reload button (Far left of cluster) -->
+                <!-- Reload button (Left of Jump along bottom row) -->
                 <button id="al-m-reload" style="
                     position: absolute;
-                    bottom: 25px;
-                    right: 160px;
-                    width: 44px;
-                    height: 44px;
+                    bottom: 10px;
+                    right: 130px;
+                    width: 42px;
+                    height: 42px;
                     border-radius: 50%;
                     background: #161414;
                     color: #cbd5e1;
                     border: 2px solid #666;
-                    font: 10px Bungee, sans-serif;
+                    font: 9px Bungee, sans-serif;
                     display: flex;
                     align-items: center;
                     justify-content: center;
@@ -415,18 +603,18 @@ export class MobileControls {
                     outline: none;
                 ">RELOAD</button>
 
-                <!-- Flight specific: Descend & Land (placed alongside Jump/Rise when in car) -->
+                <!-- Flight specific: Descend (replaces Reload spot) -->
                 <button id="al-m-descend" style="
                     position: absolute;
-                    bottom: 15px;
-                    right: 160px;
-                    width: 50px;
-                    height: 50px;
+                    bottom: 10px;
+                    right: 130px;
+                    width: 44px;
+                    height: 44px;
                     border-radius: 50%;
                     background: #2b1f1f;
                     color: #fca5a5;
                     border: 2px solid #ef4444;
-                    font: 10px Bungee, sans-serif;
+                    font: 9px Bungee, sans-serif;
                     display: none;
                     align-items: center;
                     justify-content: center;
@@ -434,17 +622,18 @@ export class MobileControls {
                     pointer-events: auto;
                 ">DOWN</button>
 
+                <!-- Flight specific: Land (above Descend) -->
                 <button id="al-m-land" style="
                     position: absolute;
-                    bottom: 75px;
-                    right: 155px;
-                    width: 46px;
-                    height: 46px;
+                    bottom: 60px;
+                    right: 126px;
+                    width: 42px;
+                    height: 42px;
                     border-radius: 50%;
                     background: #1e293b;
                     color: #38bdf8;
                     border: 2px solid #0284c7;
-                    font: 10px Bungee, sans-serif;
+                    font: 9px Bungee, sans-serif;
                     display: none;
                     align-items: center;
                     justify-content: center;
@@ -476,7 +665,7 @@ export class MobileControls {
 
     /**
      * Attaches touch/pointer listeners to buttons with preventDefault/stopPropagation
-     * so button presses don't interfere with virtual joysticks or camera dragging.
+     * and pointer capture so button presses don't interfere with virtual joysticks or camera dragging.
      */
     private bindTouchListeners(): void {
         const bindHold = (btn: HTMLElement | null, onDown: () => void, onUp: () => void) => {
@@ -484,6 +673,11 @@ export class MobileControls {
             btn.addEventListener("pointerdown", e => {
                 e.preventDefault();
                 e.stopPropagation();
+                try {
+                    if ("setPointerCapture" in btn && typeof (btn as any).setPointerCapture === "function" && (e as any).pointerId !== undefined) {
+                        (btn as any).setPointerCapture((e as any).pointerId);
+                    }
+                } catch {}
                 btn.style.transform = "scale(0.92)";
                 onDown();
             });
@@ -502,6 +696,11 @@ export class MobileControls {
             btn.addEventListener("pointerdown", e => {
                 e.preventDefault();
                 e.stopPropagation();
+                try {
+                    if ("setPointerCapture" in btn && typeof (btn as any).setPointerCapture === "function" && (e as any).pointerId !== undefined) {
+                        (btn as any).setPointerCapture((e as any).pointerId);
+                    }
+                } catch {}
                 btn.style.transform = "scale(0.92)";
                 action();
             });

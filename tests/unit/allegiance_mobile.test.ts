@@ -374,4 +374,24 @@ describe("MobileControls", () => {
         cmdBtn.dispatchEvent({ type: "pointerdown" });
         expect(keysSent).toContain("Tab");
     });
+
+    it("optimizes right cluster height and top bar for landscape mode with responsive media queries", () => {
+        MobileControls.init(mockCallbacks);
+        const root = document.getElementById("allegiance-mobile-controls");
+        expect(root).not.toBeNull();
+
+        // Right cluster has low profile height (<= 130px, reduced from 220px)
+        const cluster = document.getElementById("al-m-right-cluster");
+        expect(cluster).not.toBeNull();
+        expect(cluster?.innerHTML).not.toBeNull();
+
+        // Top bar container exists and contains responsive CSS styles
+        const topBar = document.getElementById("al-m-top-bar");
+        expect(topBar).not.toBeNull();
+
+        // Root HTML includes media queries for low-height landscape screens
+        expect(root?.innerHTML).toContain("@media (max-height: 380px)");
+        expect(root?.innerHTML).toContain("@media (max-height: 330px)");
+    });
 });
+

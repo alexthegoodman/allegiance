@@ -47,6 +47,15 @@ function render(g: GameView) {
     return { ui, painter, log, ids: painter.buttons.map(b => b.id) };
 }
 
+function renderMobile(g: GameView, W = 800, H = 360) {
+    const { painter, log } = fakeEngine();
+    const ui = new UiFrame(painter, W, H);
+    painter.begin();
+    drawScreen(g, ui);
+    painter.flush();
+    return { ui, painter, log, ids: painter.buttons.map(b => b.id), buttons: painter.buttons };
+}
+
 describe("screens", () => {
     it("title offers a new nation and a disabled continue without one, once the server answers", () => {
         const g = view("title", { online: { phase: "ready", problem: null, player: { id: "p", email: null, anonymous: true }, nation: null, busy: null,
@@ -153,6 +162,110 @@ describe("screens", () => {
         g.prompt = "[E] SOMETHING ELSE";
         painter.begin(); drawScreen(g, ui); painter.flush();
         expect(log.clears).toBe(2);
+    });
+});
+
+describe("mobile landscape screens", () => {
+    it("title renders all interactive buttons within bounds on mobile landscape", () => {
+        for (const [w, h] of [[800, 360], [640, 320]]) {
+            const g = view("title", {
+                online: { phase: "ready", problem: null, player: { id: "p", email: null, anonymous: true }, nation: null, busy: null,
+                    net: { world: "open", room: "open", cell: null, online: 1, error: null }, saveError: null }
+            });
+            const { ids, buttons } = renderMobile(g, w, h);
+            expect(ids).toContain("title-new");
+            expect(ids).toContain("title-continue");
+            expect(ids).toContain("title-signin");
+            for (const b of buttons) {
+                expect(b.y, `${b.id} top out of bounds on ${w}x${h}`).toBeGreaterThanOrEqual(0);
+                expect(b.y + b.h, `${b.id} bottom (${b.y + b.h}) exceeds screen height ${h}`).toBeLessThanOrEqual(h);
+            }
+        }
+    });
+
+    it("setup renders all inputs, ideology, colors and action buttons within bounds on mobile landscape", () => {
+        for (const [w, h] of [[800, 360], [640, 320]]) {
+            const g = view("setup", {
+                setup: { party: "Dawn", leader: "Ada", ideology: "solidarity", color: 0, spawn: "london", focus: null,
+                    places: [{ name: "Place 1", lat: 51.5, lon: -0.1, kind: "town" }] }
+            });
+            const { ids, buttons } = renderMobile(g, w, h);
+            for (const expected of ["setup-party", "setup-leader", "setup-ideo-solidarity", "setup-color-0", "setup-hometown", "setup-search", "setup-random", "setup-back", "setup-begin"]) {
+                expect(ids, `missing ${expected} on ${w}x${h}`).toContain(expected);
+            }
+            for (const b of buttons) {
+                expect(b.y, `${b.id} top out of bounds on ${w}x${h}`).toBeGreaterThanOrEqual(0);
+                expect(b.y + b.h, `${b.id} bottom (${b.y + b.h}) exceeds height ${h}`).toBeLessThanOrEqual(h);
+            }
+
+            // Verify bottom action bar buttons do not overlap each other
+            const back = buttons.find(b => b.id === "setup-back")!;
+            const random = buttons.find(b => b.id === "setup-random")!;
+            const begin = buttons.find(b => b.id === "setup-begin")!;
+            expect(back.x + back.w).toBeLessThanOrEqual(random.x);
+            expect(random.x + random.w).toBeLessThanOrEqual(begin.x);
+
+            // Verify hometown search does not overlap bottom buttons
+            const search = buttons.find(b => b.id === "setup-search")!;
+            expect(search.y + search.h).toBeLessThanOrEqual(begin.y);
+        }
+    });
+
+    it("console tabs render without vertical clipping on mobile landscape", () => {
+        const W = 800, H = 360;
+        const expectations: Record<ConsoleTab, string[]> = {
+            overview: ["posture-inside", "posture-field", "dues-up", "dues-down", "rest", "save"],
+            organization: ["auto-organize", "members-prev", "members-next"],
+            territory: ["act-travel", "act-hq", "act-autopilot", "act-election", "act-coup", "act-war", "act-arm", "act-disarm", "dispatch-50", "scheme-charity"],
+            armory: ["buy-rifle", "armor-vest", "pamphlet-truth", "facility-press"],
+            skills: ["skill-oratory", "skill-intrigue"],
+            inventory: ["aim-assist-up", "look-sensitivity-up"],
+        };
+
+        for (const [tab, expectedIds] of Object.entries(expectations) as [ConsoleTab, string[]][]) {
+            const g = view("console", { tab });
+            if (tab === "organization") g.selectedMember = g.c!.members[0].id;
+            const { ids, buttons } = renderMobile(g, W, H);
+            expect(ids).toContain("console-close");
+            for (const expected of expectedIds) {
+                expect(ids, `${tab}: missing ${expected}`).toContain(expected);
+            }
+            for (const b of buttons) {
+                expect(b.y, `${tab} - ${b.id} top < 0`).toBeGreaterThanOrEqual(0);
+                expect(b.y + b.h, `${tab} - ${b.id} bottom (${b.y + b.h}) exceeds screen height ${H}`).toBeLessThanOrEqual(H);
+            }
+        }
+    });
+
+    it("organization appointment buttons all fit within mobile landscape bounds", () => {
+        const g = view("console", { tab: "organization" });
+        g.selectedMember = g.c!.members[0].id;
+        const { ids, buttons } = renderMobile(g, 800, 360);
+        for (const expected of ["appoint-treasurer", "appoint-chief", "appoint-cell", "appoint-commissioner", "appoint-follower", "appoint-armed", "appoint-none"]) {
+            expect(ids).toContain(expected);
+            const b = buttons.find(x => x.id === expected)!;
+            expect(b.y).toBeGreaterThanOrEqual(0);
+            expect(b.y + b.h).toBeLessThanOrEqual(360);
+        }
+    });
+
+    it("shop and dialogue render choices within mobile landscape bounds", () => {
+        const s = view("shop", { shop: { kind: "gunsmith", name: "Surplus & Steel" } });
+        const { ids: sIds, buttons: sButtons } = renderMobile(s, 800, 360);
+        expect(sIds).toContain("shop-close");
+        expect(sIds.some(id => id.startsWith("shop-buy"))).toBe(true);
+        for (const b of sButtons) {
+            expect(b.y).toBeGreaterThanOrEqual(0);
+            expect(b.y + b.h).toBeLessThanOrEqual(360);
+        }
+
+        const d = view("dialogue", { dialogue: { actorId: 1, name: "Mara Okafor", segment: "workers", opinion: 0.5, lean: "concordat", member: false, follower: false, orator: false, reply: "Maybe.", recruitChance: 0.4, memberId: null } });
+        const { ids: dIds, buttons: dButtons } = renderMobile(d, 800, 360);
+        expect(dIds).toEqual(expect.arrayContaining(["dlg-persuade", "dlg-pamphlet", "dlg-recruit", "dlg-leave"]));
+        for (const b of dButtons) {
+            expect(b.y).toBeGreaterThanOrEqual(0);
+            expect(b.y + b.h).toBeLessThanOrEqual(360);
+        }
     });
 });
 
