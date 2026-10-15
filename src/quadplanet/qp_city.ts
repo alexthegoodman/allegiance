@@ -68,6 +68,11 @@ export interface CityBuilding {
     distance: number;
 }
 
+export function isMilitaryBuilding(b: { key?: string; kind?: string }): boolean {
+    const k = b.key ?? "";
+    return k.startsWith("al-mil-") || k.startsWith("outpost-") || k.includes("mil-") || b.kind === "military";
+}
+
 /** The house model's size range, for the Rust side's house rule. */
 export function houseRule() {
     const values = resolveParams(houseDef, defaultValues(houseDef));
@@ -505,9 +510,17 @@ export class CityHouses {
         for (const v of this.variants.values()) { v.want = Infinity; v.wants = [false, false]; }
         for (const b of this.candidates) {
             const v = this.variantFor(b);
+            const mil = isMilitaryBuilding(b);
             let lod: 0 | 1 | null = null;
-            if (b.distance < o.lod0Radius && n0 < o.maxLod0 && triangles + v.triangles[0] <= o.triangleBudget) lod = 0;
-            else if (b.distance < o.lod1Radius && triangles + v.triangles[1] <= o.triangleBudget) lod = 1;
+            if (mil) {
+                const lod0R = Math.max(o.lod0Radius, 350);
+                const lod1R = Math.max(o.lod1Radius, 1500);
+                if (b.distance < lod0R) lod = 0;
+                else if (b.distance < lod1R) lod = 1;
+            } else {
+                if (b.distance < o.lod0Radius && n0 < o.maxLod0 && triangles + v.triangles[0] <= o.triangleBudget) lod = 0;
+                else if (b.distance < o.lod1Radius && triangles + v.triangles[1] <= o.triangleBudget) lod = 1;
+            }
             if (lod === null) continue;
             if (lod === 0) n0++;
             triangles += v.triangles[lod];
@@ -545,7 +558,8 @@ export class CityHouses {
             if (lodWanted === undefined) { if (current) this.remove(b.key); continue; }
             const v = this.variantFor(b);
             const other: 0 | 1 = lodWanted === 0 ? 1 : 0;
-            const lod = this.ready(v, lodWanted) ? lodWanted : this.ready(v, other) && (other === 1 || b.distance < o.lod0Radius * 2) ? other : null;
+            const maxOtherDist = isMilitaryBuilding(b) ? Math.max(o.lod0Radius * 2, 700) : o.lod0Radius * 2;
+            const lod = this.ready(v, lodWanted) ? lodWanted : this.ready(v, other) && (other === 1 || b.distance < maxOtherDist) ? other : null;
             if (lod !== lodWanted) complete = false;
             if (lod === null) { if (current && current.variant !== v.key) this.remove(b.key); continue; }
             if (current && current.lod === lod && current.variant === v.key) continue;
@@ -592,11 +606,14 @@ export class CityHouses {
     /** True while houses that should be drawn are still being made (for settling captures). */
     busy(): boolean {
         for (const b of this.candidates) {
-            if (b.distance >= this.options.lod1Radius) break;
+            const mil = isMilitaryBuilding(b);
+            const maxDist = mil ? Math.max(this.options.lod1Radius, 1500) : this.options.lod1Radius;
+            if (b.distance >= maxDist) break;
             const s = this.shown.get(b.key);
             if (!s) return true;
             const v = this.variants.get(s.variant)!;
-            if (b.distance < this.options.lod0Radius && s.lod !== 0 && v.status[0] !== "ready") return true;
+            const lod0Dist = mil ? Math.max(this.options.lod0Radius, 350) : this.options.lod0Radius;
+            if (b.distance < lod0Dist && s.lod !== 0 && v.status[0] !== "ready") return true;
         }
         return false;
     }

@@ -446,3 +446,17 @@ describe("house evaluation off the game thread", () => {
         expect(city.lastStats.instances).toBe(street.length);
     });
 });
+
+describe("military outposts in city streaming", () => {
+    it("displays military buildings regardless of triangle budget and with less aggressive LODs", () => {
+        const militaryBuilding = building("al-mil-outpost-hq", 0, 150);
+        const regularBuilding = building("civilian-house", 0, 50);
+        const f = fakeEngine([militaryBuilding, regularBuilding]);
+        // Set triangleBudget to 0: regular buildings will be culled by budget
+        const city = new CityHouses(f.engine, { lod0Radius: 20, maxLod0: 5, lod1Radius: 100, triangleBudget: 0 });
+        const camera: Vec3 = [0, 100, 0];
+        for (let frame = 0; frame < 5; frame++) { city.update(camera, [0, 0, 0], 1, 12); f.land(); }
+        expect(city.lastStats.candidates).toBe(2);
+        expect(city.lastStats.lod0).toBe(1); // Military building at 150m gets LOD 0
+    });
+});

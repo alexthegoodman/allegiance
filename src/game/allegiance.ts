@@ -2523,7 +2523,7 @@ function updateCompounds(): void {
         cs.sited = true;
         moved = true;
     }
-    placedCompounds = near.filter(cs => cs.sited).map(placeCompound).filter(p => Math.hypot(p.cx - body.x, p.cz - body.z) < 700);
+    placedCompounds = near.map(placeCompound).filter(p => Math.hypot(p.cx - body.x, p.cz - body.z) < 1500);
     const sig = placedCompounds.map(p => `${p.cs.id}:${p.cx.toFixed(0)},${p.cz.toFixed(0)}`).join("|");
     if (moved || sig !== compoundSig) { compoundSig = sig; buildNav(nav.cx, nav.cz); }
 }
@@ -2535,6 +2535,7 @@ function stepCompounds(dt: number): void {
     if (!c || !frame) return;
     let nearest: PlacedCompound | null = null, nearestD = Infinity;
     for (const p of placedCompounds) {
+        if (!p.cs.sited) continue;
         const d = Math.hypot(p.cx - body.x, p.cz - body.z);
         if (p.cs.captured) continue;
         if (d < 170 && mode === "play" || d < 170 && mode === "dialogue") {
@@ -2849,7 +2850,8 @@ function compoundItems(): ScatterItem[] {
     return out;
 }
 
-const SCATTER_RADIUS: Record<string, number> = { cobra: 5, "mil-hq": 10, "mil-barracks": 11, "mil-depot": 9, "mil-hangar": 11, "mil-tower": 6, "mil-wall": 4, beacon: 160, flag: 6 };
+const SCATTER_RADIUS: Record<string, number> = { cobra: 5, "mil-hq": 10, "mil-barracks": 11, "mil-depot": 9, "mil-hangar": 11, "mil-tower": 6, "mil-wall": 4, beacon: 160, flag: 6,
+    "mil-hq-lod1": 10, "mil-barracks-lod1": 11, "mil-depot-lod1": 9, "mil-hangar-lod1": 11 };
 
 /**
  * An item's record as far as it never changes: its rotation and scale, tint, sway phase, where it

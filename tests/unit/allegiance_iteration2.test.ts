@@ -9,7 +9,7 @@ import {
     HIP_FOV, ADS_FOV, ADS_TIME, MOUSE_YAW,
 } from "../../src/game/al_aim";
 import {
-    RoadMask, roadSegments, roadMargin, scatterAround, scatterMesh, foliageKey, foliageValues, foliageLods, FOLIAGE, FoliageMeshes, PROPS, cacheProps, BROADLEAF,
+    RoadMask, roadSegments, roadMargin, scatterAround, scatterMesh, propKey, foliageKey, foliageValues, foliageLods, FOLIAGE, FoliageMeshes, PROPS, cacheProps, BROADLEAF,
 } from "../../src/game/al_scatter";
 import { evaluateObject, resolveParams, defaultValues } from "../../src/mesha/mesha_object";
 import { lookupObject } from "../../src/mesha/library";
@@ -255,6 +255,17 @@ describe("Mesha foliage and furniture", () => {
         }
         const props = new Map<string, unknown>();
         expect(cacheProps({ status: (_n, k) => (props.has(k) ? "ready" : "missing"), put: (_n, k, m) => { props.set(k, m); }, failure: () => null })).toBe(Object.keys(PROPS).length);
+    });
+    it("draws military buildings with less aggressive LODs and distant low-poly meshes out to 1500m", () => {
+        expect(scatterMesh("mil-hq", 100)).toBe(propKey("mil-hq"));
+        expect(scatterMesh("mil-hq", 340)).toBe(propKey("mil-hq"));
+        expect(scatterMesh("mil-hq", 360)).toBe(propKey("mil-hq-lod1"));
+        expect(scatterMesh("mil-hq", 1400)).toBe(propKey("mil-hq-lod1"));
+        expect(scatterMesh("mil-hq", 1550)).toBeNull();
+
+        expect(scatterMesh("mil-tower", 500)).toBe(propKey("mil-tower"));
+        expect(scatterMesh("mil-wall", 1200)).toBe(propKey("mil-wall"));
+        expect(scatterMesh("flag", 1000)).toBe(propKey("flag"));
     });
 });
 

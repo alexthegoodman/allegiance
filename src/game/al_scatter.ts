@@ -230,6 +230,10 @@ export const PROPS: Record<string, () => ModelMesh> = {
     "mil-barracks": () => meshaBuilding("Barracks", { width: 18, depth: 7, floors: 1, groundHeight: 4.2, rooftop: "plant" }),
     "mil-depot": () => meshaBuilding("Warehouse", { width: 11, depth: 11, floors: 1, groundHeight: 5.2, facadeFinish: "masonry.darkConcrete", trimFinish: "masonry.concrete" }),
     "mil-hangar": () => meshaBuilding("Warehouse", { width: 16, depth: 14, floors: 1, groundHeight: 6.2, facadeFinish: "metal.corrugatedGreen", bayWidth: 5 }),
+    "mil-hq-lod1": () => buildMilitary("hq"),
+    "mil-barracks-lod1": () => buildMilitary("barracks"),
+    "mil-depot-lod1": () => buildMilitary("depot"),
+    "mil-hangar-lod1": () => buildMilitary("hangar"),
     "mil-tower": () => buildMilitary("tower"), "mil-wall": () => buildMilitary("wall"),
     // The Cobra parked in a compound's courtyard (al_cobra.ts), and what destruction draws
     // (al_fx.ts, al_destruction.ts): missiles, fire, smoke, sparks, broken pieces, scorch marks.
@@ -555,6 +559,9 @@ export function familyOfMesh(meshKey: string): string | null {
 }
 /** Props are drawn out to this distance. */
 export const PROP_RANGE = 180;
+/** Military outposts: full detail within 350m, distant low-poly out to 1500m. */
+export const MILITARY_LOD0_RANGE = 350;
+export const MILITARY_RANGE = 1500;
 
 /** Which mesh (cache key) an item draws with from `distance` meters, or null when it is too far. */
 export function scatterMesh(family: string, distance: number): string | null {
@@ -563,6 +570,15 @@ export function scatterMesh(family: string, distance: number): string | null {
         if (distance > spec.range) return null;
         if (distance <= spec.near) return foliageKey(spec, 0);
         return foliageKey(spec, foliageLods(spec).length === 3 && distance > spec.mid! ? 2 : 1);
+    }
+    if (family.startsWith("mil-")) {
+        if (distance > MILITARY_RANGE) return null;
+        if (family === "mil-tower" || family === "mil-wall" || family.endsWith("-lod1")) return propKey(family);
+        if (distance <= MILITARY_LOD0_RANGE) return propKey(family);
+        return propKey(`${family}-lod1`);
+    }
+    if (family === "flag") {
+        return distance <= MILITARY_RANGE ? propKey(family) : null;
     }
     if (!PROPS[family]) return null;
     return distance <= (family === "beacon" ? 6000 : PROP_RANGE) ? propKey(family) : null;
