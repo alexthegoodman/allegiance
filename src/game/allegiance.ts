@@ -1089,12 +1089,15 @@ function setupInput(): void {
             if (button === 2) { adsButton = true; return; }
             const id = ui ? ui.click(x, y) : null;
             if (id) return;
-            if (button === 0 && mode === "play" && (!driving() || inCobra())) { triggerHeld = true; triggerFresh = true; }
+            if (button === 0 && mode === "play" && (!driving() || inCobra())) {
+                triggerHeld = true; triggerFresh = true;
+                if (!lookDrag) lookDrag = [x, y];
+            }
             else if (mode === "setup") setup.focus = null;
         },
         mouseMove: (x: number, y: number) => {
             if (ui) ui.p.hover = ui.p.hit(x, y)?.id ?? null;
-            if (lookButtonDown && lookDrag && (mode === "play" || mode === "speech")) {
+            if ((lookButtonDown || triggerHeld) && lookDrag && (mode === "play" || mode === "speech")) {
                 const dx = x - lookDrag[0], dy = y - lookDrag[1];
                 lookDrag = [x, y];
                 // Played out over the next frames (al_aim.ts), so the view glides.
@@ -1102,9 +1105,9 @@ function setupInput(): void {
             }
         },
         mouseUp: (button: number) => {
-            if (button === 1) { lookButtonDown = false; lookDrag = null; }
+            if (button === 1) { lookButtonDown = false; if (!triggerHeld) lookDrag = null; }
             else if (button === 2) adsButton = false;
-            else triggerHeld = false;
+            else { triggerHeld = false; if (!lookButtonDown) lookDrag = null; }
         },
         mouseWheel: (_dx: number, dy: number) => {
             if (mode === "play" || mode === "speech") body.camDistance = Math.max(1.8, Math.min(16, body.camDistance * (dy > 0 ? 0.9 : 1.1)));

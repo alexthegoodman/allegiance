@@ -43,17 +43,28 @@ export class Input {
             // A letter released with or without shift: both spellings go.
             if (e.key.length === 1) { this.held.delete(e.key.toLowerCase()); this.held.delete(e.key.toUpperCase()); }
         });
-        window.addEventListener("blur", () => { this.held.clear(); this.shift = false; });
-        let lastPointerDown = 0;
+        window.addEventListener("blur", () => {
+            this.held.clear();
+            this.shift = false;
+            this.handlers?.mouseUp(0);
+            this.handlers?.mouseUp(1);
+            this.handlers?.mouseUp(2);
+        });
+        const lastPointerDownByButton = new Map<number, number>();
+        const lastPointerUpByButton = new Map<number, number>();
         target.addEventListener("contextmenu", e => e.preventDefault());
+        window.addEventListener("contextmenu", e => {
+            if (e.target === target || (target && target.contains(e.target as Node))) e.preventDefault();
+        });
         target.addEventListener("pointerdown", e => {
-            lastPointerDown = performance.now();
+            lastPointerDownByButton.set(e.button, performance.now());
             target.focus();
             if (e.pointerType === "touch") e.preventDefault();
             this.handlers?.mouseDown(MOUSE_BUTTON[e.button] ?? e.button, e.clientX, e.clientY);
         });
         target.addEventListener("mousedown", e => {
-            if (performance.now() - lastPointerDown < 250) return;
+            const last = lastPointerDownByButton.get(e.button) ?? 0;
+            if (performance.now() - last < 250) return;
             target.focus();
             e.preventDefault();
             this.handlers?.mouseDown(MOUSE_BUTTON[e.button] ?? e.button, e.clientX, e.clientY);
@@ -62,6 +73,12 @@ export class Input {
             this.handlers?.mouseMove(e.clientX, e.clientY);
         });
         window.addEventListener("pointerup", e => {
+            lastPointerUpByButton.set(e.button, performance.now());
+            this.handlers?.mouseUp(MOUSE_BUTTON[e.button] ?? e.button);
+        });
+        window.addEventListener("mouseup", e => {
+            const last = lastPointerUpByButton.get(e.button) ?? 0;
+            if (performance.now() - last < 250) return;
             this.handlers?.mouseUp(MOUSE_BUTTON[e.button] ?? e.button);
         });
         target.addEventListener("wheel", e => { e.preventDefault(); this.handlers?.mouseWheel(-e.deltaX, -e.deltaY); }, { passive: false });

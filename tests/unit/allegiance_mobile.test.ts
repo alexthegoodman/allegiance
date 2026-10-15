@@ -393,5 +393,53 @@ describe("MobileControls", () => {
         expect(root?.innerHTML).toContain("@media (max-height: 380px)");
         expect(root?.innerHTML).toContain("@media (max-height: 330px)");
     });
+
+    it("remains completely hidden on desktop environment without query flags", () => {
+        // Simulate desktop environment
+        (globalThis as any).window.location = { search: "" };
+        (globalThis as any).navigator = { maxTouchPoints: 0, userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" };
+        MobileControls.get()?.destroy();
+
+        const mc = MobileControls.init(mockCallbacks);
+        expect(mc.isMobile()).toBe(false);
+
+        const root = document.getElementById("allegiance-mobile-controls");
+        const overlay = document.getElementById("allegiance-orientation-overlay");
+
+        // During gameplay: should stay completely hidden on desktop
+        mc.update("play", controller, 1.0);
+        expect(root?.style.display).toBe("none");
+        expect(overlay?.style.display).toBe("none");
+
+        // Even in portrait dimensions, orientation prompt should not show on desktop
+        (globalThis as any).window.innerHeight = 1000;
+        (globalThis as any).window.innerWidth = 500;
+        mc.update("play", controller, 1.1);
+        expect(overlay?.style.display).toBe("none");
+    });
+
+    it("supports dynamic toggling via setMobile", () => {
+        (globalThis as any).window.location = { search: "" };
+        (globalThis as any).navigator = { maxTouchPoints: 0, userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" };
+        MobileControls.get()?.destroy();
+
+        const mc = MobileControls.init(mockCallbacks);
+        expect(mc.isMobile()).toBe(false);
+
+        const root = document.getElementById("allegiance-mobile-controls");
+        mc.update("play", controller, 1.0);
+        expect(root?.style.display).toBe("none");
+
+        // Dynamically enable mobile
+        mc.setMobile(true);
+        expect(mc.isMobile()).toBe(true);
+        mc.update("play", controller, 1.1);
+        expect(root?.style.display).toBe("block");
+
+        // Dynamically disable mobile
+        mc.setMobile(false);
+        expect(mc.isMobile()).toBe(false);
+        expect(root?.style.display).toBe("none");
+    });
 });
 

@@ -1458,7 +1458,7 @@ function drawInventory(g: GameView, ui: UiFrame, c: Campaign, top: number): void
     };
     setting("aim-assist", "AIM ASSIST", `${Math.round(k.aimAssist * 100)}%`, 0.1);
     setting("look-sensitivity", "LOOK SPEED", `${k.lookSensitivity.toFixed(1)}x`, 0.1);
-    p.text("ADS: hold middle mouse / Z / LT. Call car: G / View.", x, y + 2, compact ? 10 : 12, THEME.dim, FONT.body, col, 30);
+    p.text("Shoot: LMB / RT. Look: RMB / Right stick. ADS: Middle mouse / Z / LT. Call car: G / View.", x, y + 2, compact ? 10 : 12, THEME.dim, FONT.body, col, 30);
 }
 
 function drawShop(g: GameView, ui: UiFrame): void {

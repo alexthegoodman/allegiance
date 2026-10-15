@@ -67,18 +67,53 @@ export class MobileControls {
     }
 
     private detectTouch(): void {
-        const queryMobile = new URLSearchParams(window.location.search).has("mobile") || new URLSearchParams(window.location.search).has("touch");
-        this.isTouchDevice = queryMobile || (typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0));
+        if (typeof window === "undefined") {
+            this.isTouchDevice = false;
+            return;
+        }
+        const search = window.location?.search ?? "";
+        const query = new URLSearchParams(search);
+        if (query.has("mobile") || query.has("touch")) {
+            this.isTouchDevice = true;
+            return;
+        }
+        if (query.has("desktop") || query.has("nomobile")) {
+            this.isTouchDevice = false;
+            return;
+        }
+
+        const nav = typeof navigator !== "undefined" ? navigator : null;
+        const ua = nav?.userAgent ?? "";
+        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+            (nav?.platform === "MacIntel" && (nav.maxTouchPoints ?? 0) > 1);
+        const hasTouch = "ontouchstart" in window || ((nav?.maxTouchPoints ?? 0) > 0);
+        const isCoarseTouchOnly = typeof window.matchMedia === "function" &&
+            window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+
+        // Active only on mobile user-agents or pure coarse touch screens (tablets/phones)
+        this.isTouchDevice = !!(hasTouch && (isMobileUA || isCoarseTouchOnly));
     }
 
     public isMobile(): boolean {
         return this.isTouchDevice;
     }
 
+    public setMobile(active: boolean): void {
+        this.isTouchDevice = active;
+        if (!active) {
+            if (this.root) this.root.style.display = "none";
+            if (this.orientationPrompt) this.orientationPrompt.style.display = "none";
+            if (VirtualJoystick.Canvas) VirtualJoystick.Canvas.style.display = "none";
+        } else {
+            this.checkOrientation();
+        }
+    }
+
     /**
      * Initializes the Babylon VirtualJoystick instances.
      */
     private initJoysticks(): void {
+        if (!this.isTouchDevice) return;
         if (this.leftStick && this.rightStick) return;
         try {
             // Left virtual joystick for movement (gold theme color, compact for mobile landscape)
@@ -809,8 +844,12 @@ export class MobileControls {
 
     private checkOrientation(): void {
         if (typeof window === "undefined" || !this.orientationPrompt) return;
+        if (!this.isTouchDevice) {
+            this.orientationPrompt.style.display = "none";
+            return;
+        }
         const isPortrait = window.innerHeight > window.innerWidth;
-        const shouldShow = isPortrait && !this.ignoreOrientation && this.isTouchDevice;
+        const shouldShow = isPortrait && !this.ignoreOrientation;
         this.orientationPrompt.style.display = shouldShow ? "flex" : "none";
     }
 
@@ -836,6 +875,15 @@ export class MobileControls {
      */
     public update(mode: Mode, controller: Controller, time: number): void {
         this.currentMode = mode;
+
+        // If not a touch device, ensure all mobile elements and joysticks are hidden and do nothing
+        if (!this.isTouchDevice) {
+            if (VirtualJoystick.Canvas) VirtualJoystick.Canvas.style.display = "none";
+            if (this.root) this.root.style.display = "none";
+            if (this.orientationPrompt) this.orientationPrompt.style.display = "none";
+            return;
+        }
+
         const inGameplay = mode === "play" || mode === "speech";
 
         // Toggle joysticks and UI visibility
@@ -927,8 +975,16 @@ export class MobileControls {
     public destroy(): void {
         this.leftStick?.releaseCanvas();
         this.rightStick?.releaseCanvas();
+        this.leftStick = null;
+        this.rightStick = null;
+        if (VirtualJoystick.Canvas) {
+            VirtualJoystick.Canvas.remove();
+            VirtualJoystick.Canvas = null;
+        }
         this.root?.remove();
+        this.root = null;
         this.orientationPrompt?.remove();
+        this.orientationPrompt = null;
         MobileControls.instance = null;
     }
 }
