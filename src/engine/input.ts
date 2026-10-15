@@ -44,10 +44,26 @@ export class Input {
             if (e.key.length === 1) { this.held.delete(e.key.toLowerCase()); this.held.delete(e.key.toUpperCase()); }
         });
         window.addEventListener("blur", () => { this.held.clear(); this.shift = false; });
+        let lastPointerDown = 0;
         target.addEventListener("contextmenu", e => e.preventDefault());
-        target.addEventListener("mousedown", e => { target.focus(); e.preventDefault(); this.handlers?.mouseDown(MOUSE_BUTTON[e.button] ?? e.button, e.clientX, e.clientY); });
-        window.addEventListener("mousemove", e => this.handlers?.mouseMove(e.clientX, e.clientY));
-        window.addEventListener("mouseup", e => this.handlers?.mouseUp(MOUSE_BUTTON[e.button] ?? e.button));
+        target.addEventListener("pointerdown", e => {
+            lastPointerDown = performance.now();
+            target.focus();
+            if (e.pointerType === "touch") e.preventDefault();
+            this.handlers?.mouseDown(MOUSE_BUTTON[e.button] ?? e.button, e.clientX, e.clientY);
+        });
+        target.addEventListener("mousedown", e => {
+            if (performance.now() - lastPointerDown < 250) return;
+            target.focus();
+            e.preventDefault();
+            this.handlers?.mouseDown(MOUSE_BUTTON[e.button] ?? e.button, e.clientX, e.clientY);
+        });
+        window.addEventListener("pointermove", e => {
+            this.handlers?.mouseMove(e.clientX, e.clientY);
+        });
+        window.addEventListener("pointerup", e => {
+            this.handlers?.mouseUp(MOUSE_BUTTON[e.button] ?? e.button);
+        });
         target.addEventListener("wheel", e => { e.preventDefault(); this.handlers?.mouseWheel(-e.deltaX, -e.deltaY); }, { passive: false });
     }
 

@@ -1,4 +1,5 @@
 import { Controller } from "./al_controller";
+import { MobileControls } from "./al_mobile";
 import { newLook, addMouse, stepLook, stepAds, adsFov, pickAssistTarget, assistFriction, assistPull, bendAngle, adsSpread, adsMove, type AssistPick } from "./al_aim";
 import { parkBeside, newCar, stepCar, landingClear, landingSpot, roofUnder, carGround, carFloor, carSpec, callCar, stepCall, callEta, openSky, steerAutopilot, autopilotWarp, ROOF_FILL, type FlyingCar, type Autopilot } from "./al_vehicle";
 import { useItem, quickHealItem, shopForBuilding, shopStock, buyStock, sellItem, houseLoot, isLooted, takeHouseLoot, SHOP_NAMES, type ShopKind, type LootCache } from "./al_items";
@@ -1264,9 +1265,7 @@ async function createAccountDialog(): Promise<void> {
     if (await showAccountDialog({ mode: "create", submit: (email, password) => online.createAccount(email, password) }) && campaign) save(true);
 }
 
-function view(): GameView {
-    const c = campaign;
-    const w = weaponNow();
+function currentPrompt(): string | null {
     const nearestTalk = mode === "play" ? nearestActor(street, 3.4, x => x.kind !== "soldier") : null;
     let prompt: string | null = null;
     if (nearestTalk) {
@@ -1279,6 +1278,14 @@ function view(): GameView {
     if (playerCar?.call && campaign) prompt = `YOUR CAR IS ON ITS WAY: ${Math.round(Math.hypot(playerCar.x - body.x, playerCar.z - body.z))} M, ${Math.ceil(callEta(playerCar, flightEnvironment(), carSpec(campaign.player.carUpgrades)))} S`;
     const flying = driving();
     if (flying) prompt = `${flying === cobra ? "COBRA " : ""}${flying.state.toUpperCase()}   [L] LAND   [E / X / SQUARE] EXIT AFTER LANDING`;
+    return prompt;
+}
+
+function view(): GameView {
+    const c = campaign;
+    const w = weaponNow();
+    const flying = driving();
+    const prompt = currentPrompt();
     const rallyActor = street.rally ? actorById(street, street.rally.orator) : undefined;
     return {
         mode, tab, c, setup, loading, speech, dialogue, toasts, region, selectedRegion, selectedMember, memberPage, settlementPage, prompt,
@@ -4037,6 +4044,25 @@ export async function start(platform: Platform): Promise<void> {
     writeWorld();
     ui = new UiFrame(enginePainter(P.ui), 1600, 900);
     setupInput();
+    MobileControls.init({
+        onKey,
+        controllerButton,
+        setTrigger: (held, fresh) => { triggerHeld = held; if (fresh) triggerFresh = true; },
+        setAds: active => { adsButton = active; },
+        getPrompt: () => currentPrompt(),
+        isPiloting: () => !!driving(),
+        isCobra: () => inCobra(),
+        getWeapon: () => {
+            const w = weaponNow();
+            return {
+                name: w.name,
+                mag: Number.isFinite(w.magazine) ? magOf(w.id) : 0,
+                reserve: campaign?.player.ammo[w.id] ?? 0,
+                id: w.id
+            };
+        },
+        getUi: () => ui,
+    });
     profiling = P.profiling;
     console.log("[allegiance] initialized");
 }
@@ -4067,6 +4093,7 @@ export function tick(): void {
     const dt = profileFreeze ? 0 : fixedStep ?? real;
     time += dt;
     frameCount++;
+    MobileControls.get()?.update(mode, controller, time);
     controller.expire(time);
     if (mode !== "play" && mode !== "speech" && Math.abs(controller.left[1]) > 0.55 && time - lastMenuAxis > 0.22) {
         menuMove(controller.left[1] > 0 ? -1 : 1); lastMenuAxis = time;
