@@ -3,3 +3,6 @@ dist
 test-artifacts
 tests/bdd/out
 *.log
+# Environment files stay out of git (set VITE_ALLEGIANCE_API on Vercel); .env.example is the template.
+.env*
+!.env.example

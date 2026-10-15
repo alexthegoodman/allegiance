@@ -17,6 +17,7 @@ import { missionObjective } from "./al_mission";
 import { type MiniMap, type ScreenMarker } from "./al_markers";
 import { ITEMS, itemById, inventory, shopStock, carTier, type ShopKind } from "./al_items";
 import { CAR_UPGRADES, carSpec } from "./al_vehicle";
+import type { OnlineView } from "./al_online";
 import { type ButtonOpts, type ButtonStyle, type Color, type Painter, FONT, THEME, big, fmt, money, pct, textWidth, withAlpha } from "./al_ui";
 
 export type Mode = "title" | "setup" | "loading" | "play" | "console" | "speech" | "dialogue" | "outcome" | "shop";
@@ -113,6 +114,10 @@ export interface GameView {
     autopilot?: { name: string; km: number; warp: number; on: boolean } | null;
     /** Your comrades: walking with you, holding a spot, riding in their cars; and whether they are fighting. */
     comrades?: { following: number; holding: number; riding: number; engaged: boolean };
+    /** The Allegiance server: session, nation, realtime sockets and anything that failed. */
+    online?: OnlineView;
+    /** Other players in your room. */
+    players?: number;
     act(name: string, arg?: unknown): void;
 }
 
@@ -216,11 +221,34 @@ export function drawTitle(g: GameView, ui: UiFrame): void {
     p.stars(cx - 7 * 16 * 1.6 / 2, by + 132, 7, 16);
     p.textC("EARTH  -  ANNO 2100", cx, H * 0.06, 26, THEME.gold, FONT.head);
     p.textC("SPEAK. ORGANIZE. SEIZE THE PLANET.", cx, by + 200, 22, THEME.cream, FONT.head);
-    const bw2 = 340, x0 = cx - bw2 / 2;
-    let y = by + 260;
-    ui.button("title-new", x0, y, bw2, 58, "NEW CAMPAIGN", "red", () => g.act("setup"), { size: 22 });
-    y += 72;
-    ui.button("title-continue", x0, y, bw2, 50, "CONTINUE", "dark", () => g.act("continue"), { disabled: !g.hasSave, size: 18 });
+    const bw2 = 380, x0 = cx - bw2 / 2;
+    let y = by + 250;
+    const o = g.online;
+    if (!o || o.phase === "connecting") {
+        p.textC("CONNECTING TO THE ALLEGIANCE SERVER...", cx, y + 16, 18, THEME.gold, FONT.head);
+    } else if (o.phase === "error" || o.phase === "expired") {
+        // No way in without the server: say why, and offer what can fix it.
+        const mw = Math.min(760, W - 80);
+        p.rect(cx - mw / 2, y, mw, 92, withAlpha(THEME.redDark, 0.94), 3, THEME.gold);
+        p.textC(o.phase === "expired" ? "YOUR SESSION HAS EXPIRED" : "THE ALLEGIANCE SERVER IS UNREACHABLE", cx, y + 10, 16, THEME.gold, FONT.head);
+        p.text(o.problem ?? "Unknown error.", cx - mw / 2 + 20, y + 38, 14, THEME.cream, FONT.body, mw - 40, 48);
+        y += 108;
+        if (o.phase === "expired") {
+            ui.button("title-signin", x0, y, bw2, 50, "SIGN IN", "red", () => g.act("signin"), { size: 18 });
+            ui.button("title-anonymous", x0, y + 62, bw2, 44, "PLAY ANONYMOUSLY (NEW)", "dark", () => g.act("online-anonymous"), { size: 14 });
+        } else ui.button("title-retry", x0, y, bw2, 50, "RETRY", "red", () => g.act("online-retry"), { size: 18 });
+    } else {
+        ui.button("title-new", x0, y, bw2, 58, "NEW NATION / NEW PARTY", "red", () => g.act("setup"), { size: 19, disabled: !!o.busy });
+        y += 72;
+        ui.button("title-continue", x0, y, bw2, 50, "CONTINUE", "dark", () => g.act("continue"), { disabled: !g.hasSave || !!o.busy, size: 18 });
+        if (o.nation) p.textC(`${o.nation.name.toUpperCase()}  -  LED BY ${o.nation.leader.toUpperCase()}`, cx, y + 58, 14, THEME.gold, FONT.head);
+        y += 90;
+        if (o.busy) p.textC(o.busy.toUpperCase(), cx, y, 15, THEME.gold, FONT.head);
+        else if (o.player?.anonymous) {
+            p.textC("PLAYING ANONYMOUSLY ON THIS DEVICE", cx, y, 13, THEME.dim, FONT.head);
+            ui.button("title-signin", cx - 90, y + 22, 180, 36, "SIGN IN", "ghost", () => g.act("signin"), { size: 13 });
+        } else if (o.player) p.textC(`SIGNED IN AS ${(o.player.email ?? "").toUpperCase()}`, cx, y, 13, THEME.dim, FONT.head);
+    }
     p.textC("Elevation: Terrain Tiles (SRTM, GMTED, ETOPO1). Map data (c) OpenStreetMap contributors (OpenFreeMap).", cx, H - 44, 13, THEME.dim, FONT.body);
 }
 
@@ -292,7 +320,10 @@ export function drawSetup(g: GameView, ui: UiFrame): void {
     ui.button("setup-random", mx, H - 80, 200, 50, "RANDOM TERRITORY", "dark", () => g.act("setup-random"));
     ui.button("setup-back", lx, H - 80, 160, 50, "BACK", "ghost", () => g.act("title"));
     const ready = !!s.spawn || !!s.hometown;
-    ui.button("setup-begin", W - 300, H - 86, 260, 62, "BEGIN", "red", () => g.act("begin"), { disabled: !ready, size: 24 });
+    const busy = g.online?.busy ?? null;
+    ui.button("setup-begin", W - 300, H - 86, 260, 62, busy ? "FOUNDING..." : "BEGIN", "red", () => g.act("begin"), { disabled: !ready || !!busy, size: 24 });
+    const old = g.online?.nation;
+    if (old) p.text(`Founding a new party dissolves ${old.name}: its territory returns to the regimes.`, W - 760, H - 120, 13, THEME.gold, FONT.body, 460, 34);
 }
 
 // --- Loading -------------------------------------------------------------------------------------
@@ -472,9 +503,34 @@ export function drawHud(g: GameView, ui: UiFrame): void {
     const hint = g.car?.cobra ? "WASD FLY  SPACE RISE  C DESCEND  SHIFT BOOST  LMB / RT SOLAR MISSILES (AT THE CROSSHAIR)  L LAND  E EXIT" : g.piloting ? "WASD / LEFT STICK FLY  SPACE / A / CROSS RISE  C / B / CIRCLE DESCEND  HOLD SHIFT BOOST (BUILDS UP)  L / D-PAD DOWN LAND (GROUND OR FLAT ROOF)" : `WASD MOVE  SHIFT RUN  RMB LOOK  LMB SHOOT  E TALK/ENTER  F PAMPHLET  B SPEECH  H HEAL  T COMRADES HOLD/FOLLOW  I INVENTORY  TAB COMMAND${report.warnings.length ? `  (${report.warnings.length} ORG ALERTS)` : ""}`;
     p.rect(436, 4, W - 436 - 370, 26, [0.04, 0.035, 0.035, 0.7]);
     p.text(hint, 444, 9, 12, report.warnings.length ? THEME.gold : THEME.cream, FONT.head, W - 440 - 380);
-    if (g.debug) p.text(g.debug, 440, 30, 12, THEME.dim, FONT.mono, W - 840);
+    drawOnlineStrip(g, ui);
+    if (g.debug) p.text(g.debug, 440, 76, 12, THEME.dim, FONT.mono, W - 840);
     drawMiniMap(g, ui);
     drawCaptureAndFlight(g, ui);
+}
+
+/**
+ * The connection under the controls hint: players online and in your room, or, in red, what is
+ * wrong (a dropped socket, a failed save). Anonymous players get the button to keep their nation.
+ */
+function drawOnlineStrip(g: GameView, ui: UiFrame): void {
+    const o = g.online;
+    if (!o) return;
+    const { p, W } = ui;
+    const x = 436, w = W - 436 - 370, y = 46;
+    const net = o.net;
+    const down = net.world !== "open" || net.room !== "open";
+    const trouble = o.saveError ? `SAVE FAILED: ${o.saveError}` : down && net.error ? net.error : null;
+    const accountW = o.player?.anonymous ? 170 : 0;
+    if (trouble) {
+        p.rect(x, y, w, 26, withAlpha(THEME.redDark, 0.94), 2, THEME.gold);
+        p.text(trouble.toUpperCase(), x + 8, y + 5, 12, THEME.cream, FONT.head, w - 16 - accountW);
+    } else {
+        p.rect(x, y, w, 26, [0.04, 0.035, 0.035, 0.7]);
+        const state = down ? `CONNECTING (WORLD ${net.world.toUpperCase()}, ROOM ${net.room.toUpperCase()})` : `ONLINE ${net.online}  -  ${g.players ?? 0} NEARBY`;
+        p.text(state, x + 8, y + 6, 12, down ? THEME.gold : THEME.cream, FONT.head, w - 16 - accountW);
+    }
+    if (accountW) ui.button("hud-account", x + w - accountW, y, accountW, 26, "CREATE ACCOUNT", "red", () => g.act("create-account"), { size: 11 });
 }
 
 /**
@@ -679,6 +735,14 @@ function drawOverview(g: GameView, ui: UiFrame, c: Campaign, top: number): void 
     y += 40;
     ui.button("rest", x, y, 260, 46, "REST UNTIL TOMORROW", "red", () => g.act("rest"), { size: 14 });
     ui.button("save", x + 270, y, 120, 46, "SAVE", "dark", () => g.act("save"), { size: 14 });
+    y += 62;
+    const o = g.online;
+    p.text("ACCOUNT", x, y, 13, THEME.gold, FONT.head);
+    y += 22;
+    if (o?.player?.anonymous) {
+        p.text("Playing anonymously: this nation lives only in this browser's session until you give it an account.", x, y, 13, THEME.cream, FONT.body, col - 10, 36);
+        ui.button("console-account", x, y + 40, 220, 38, "CREATE ACCOUNT", "red", () => g.act("create-account"), { size: 13 });
+    } else if (o?.player) p.text(`Signed in as ${o.player.email}. Your nation is saved to your account.`, x, y, 13, THEME.cream, FONT.body, col - 10, 36);
     // Ledger.
     x = 40 + col;
     y = top;

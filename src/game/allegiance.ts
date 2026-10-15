@@ -50,7 +50,7 @@ import type { EarthStats } from "../quadplanet/earth/system";
 import {
     PARTY, PARTY_COLORS, REGIONS, RIVALS, IDEOLOGIES, blocById, regionDefById, weaponById, armorById, pamphletById, factionById,
 } from "./al_data";
-import { campaignRegions, discoverSettlement, restoreSettlements, migrateCampaign, type Campaign, type CompoundState, type RegionState, newCampaign, regionAt, partyShare, shiftSupport, pushNews, addKarma, angularDistance, EARTH_RADIUS_KM, SAVE_VERSION } from "./al_state";
+import { campaignRegions, discoverSettlement, type NewCampaignOptions, type Campaign, type CompoundState, type RegionState, newCampaign, regionAt, partyShare, shiftSupport, pushNews, addKarma, angularDistance, EARTH_RADIUS_KM, SAVE_VERSION } from "./al_state";
 import {
     advanceDay, applySpeech, applyRivalSpeech, applyPamphlet, reportFieldBattle, travel, moveHq, playerDied, callElection, attemptCoup,
     declareWar, proposePeace, suspendElections, setTaxRate, DAY_SECONDS, governedShare, worldSupport, takeRegion, defenseRatio,
@@ -65,8 +65,13 @@ import {
     type StreetState, type Actor, type StreetContext, newStreet, stepStreet, startCrowd, setCrowdTarget, endCrowd, convertListeners,
     nearestActor, persuade, tryRecruit, recruitChance, givePamphlet, playerShoot, castShot, shiftStreet, resetStreet, spawnSquad,
     listeners, soldiers, endRally, actorById, alive, opinionLabel, takeLoot, spawnOrator, spawnGuards, guardsOf, blastStreet, burnStreet, alarm,
-    orderComrades, CIVILIAN_TARGET,
+    orderComrades, CIVILIAN_TARGET, hurtPlayer,
 } from "./al_street";
+import { Online } from "./al_online";
+import { rgbaToHex, hexToRgba } from "./al_net";
+import { showAccountDialog } from "../net/account_ui";
+import type { LocalState, RemotePlayer } from "../net/realtime";
+import type { ServerRoomMessage } from "../net/protocol";
 import { NavGrid, NAV_SIZE, NAV_CELL, makeLocalFrame, toLocal, toWorld, dirToWorld, dirToLocal, buildingToRect, insideRect, type LocalFrame, type Rect } from "./al_nav";
 import { type PlayerBody, type PlayerInput, NO_PLAYER_INPUT, newBody, stepBody, bodyCamera, EYE } from "./al_player";
 import { enginePainter, THEME, type DrawApi } from "./al_ui";
@@ -156,7 +161,10 @@ let selectedRegion: string | null = null;
 let selectedMember: number | null = null;
 let memberPage = 0;
 let land: LandRuns | null = null;
-let hasSave = false;
+/** The Allegiance server and the realtime link (al_online.ts). */
+let online: Online;
+/** Other players in your room, as drawn this frame. */
+let remoteView: RemotePlayer[] = [];
 let time = 0;
 let fixedStep: number | null = null;
 let lastMs = 0;
@@ -270,30 +278,13 @@ function computeLand(): LandRuns {
 
 // --- Saving --------------------------------------------------------------------------------------
 
-const SAVE_PATH = "campaign.json";
-
-function save(): boolean {
-    if (!campaign) return false;
+// Your nation's campaign is saved on the Allegiance server (al_online.ts): uploads go up at most
+// every 15 s, at once with `now`; a failed upload stays on the HUD until one succeeds.
+function save(now = false): boolean {
+    if (!campaign || !online?.api.nation) return false;
     saveCar();
-    try {
-        P.saves.write(SAVE_PATH, JSON.stringify(campaign));
-        hasSave = true;
-        return true;
-    } catch (e) {
-        console.warn(`[allegiance] save failed: ${(e as Error).message}`);
-        return false;
-    }
-}
-
-function loadSave(): Campaign | null {
-    try {
-        const text = P.saves.read(SAVE_PATH);
-        if (!text) return null;
-        const c = JSON.parse(text) as Campaign;
-        return c.version === SAVE_VERSION ? migrateCampaign(restoreSettlements(c)) : null;
-    } catch {
-        return null;
-    }
+    online.save(campaign, now);
+    return true;
 }
 
 // --- Loading a place -----------------------------------------------------------------------------
@@ -340,6 +331,7 @@ function startLoading(lat: number, lon: number): void {
     if (loadedAt && Math.hypot(loadedAt[0] - lat, loadedAt[1] - lon) > 0.05) P.terrain.clear(P.earth);
     loadedAt = [lat, lon];
     stats = null;
+    online?.rt.teleported();
 }
 /** Where the last place was loaded (travel far from it drops what was streamed). */
 let loadedAt: [number, number] | null = null;
@@ -631,7 +623,8 @@ function newDay(): void {
     const t = marchingThreat();
     if (t && t.threat.day === campaign.day + 1) toast(`INVASION INCOMING: ${regionDefById(t.id)!.name} at dawn. J sends half your troops.`, "bad");
     if (campaign.outcome) { mode = "outcome"; }
-    save();
+    void online.report(campaign);
+    save(true);
 }
 
 // --- Speeches ------------------------------------------------------------------------------------
@@ -876,7 +869,8 @@ function fire(weaponId: string, aimDir?: Vec3): void {
         const probe = castShot(street, nav, cam.eye, cam.forward, Math.max(60, w.range), null, false);
         dir = normalize(sub(probe.end, eye));
     }
-    playerShoot(street, nav, eye, dir, w, skill(c, "marksmanship"), rng, adsSpread(aim.ads));
+    const results = playerShoot(street, nav, eye, dir, w, skill(c, "marksmanship"), rng, adsSpread(aim.ads));
+    sendShot(w.id, eye, results);
     // Your shots land between street steps, and the next step starts a fresh event list: handle
     // what they did now, or a fallen defender would never leave its compound's garrison.
     handleStreetEvents();
@@ -1125,14 +1119,12 @@ function act(name: string, arg?: unknown): void {
     const err = (e: string | null, ok?: string) => { if (e) toast(e, "bad"); else if (ok) toast(ok, "good"); };
     switch (name) {
         case "setup": mode = "setup"; break;
-        case "title": mode = "title"; campaign = null; region = null; resetStreet(street); hideWorld(); break;
-        case "continue": {
-            const saved = loadSave();
-            if (!saved) { toast("No saved campaign.", "bad"); break; }
-            campaign = saved;
-            startLoading(saved.player.lat, saved.player.lon);
-            break;
-        }
+        case "title": if (campaign) save(true); online.leaveWorld(); mode = "title"; campaign = null; region = null; remoteView = []; resetStreet(street); hideWorld(); break;
+        case "continue": void continueNation(); break;
+        case "online-retry": void online.connect(); break;
+        case "online-anonymous": void online.startAnonymous(); break;
+        case "signin": void signInDialog(); break;
+        case "create-account": void createAccountDialog(); break;
         case "setup-focus": setup.focus = arg as SetupState["focus"]; break;
         case "setup-ideology": setup.ideology = String(arg); setup.color = Math.max(0, PARTY_COLORS.findIndex(pc => pc.color.join() === IDEOLOGIES.find(i => i.id === arg)!.color.join())); break;
         case "setup-color": setup.color = Number(arg); break;
@@ -1150,13 +1142,13 @@ function act(name: string, arg?: unknown): void {
             setup.focus = null; break;
         }
         case "setup-place": { const p = setup.places?.[Number(arg)]; if (p) { setup.hometown = p; setup.spawn = null; setup.places = []; } break; }
-        case "begin": beginCampaign(); break;
+        case "begin": void beginNation(); break;
         case "tab": tab = arg as ConsoleTab; break;
         case "close-console": mode = "play"; break;
         case "posture": if (c) c.party.posture = arg as "inside" | "field" | "mixed"; break;
         case "dues": if (c) c.party.duesRate = Math.max(0, Math.min(1, Math.round((c.party.duesRate + Number(arg)) * 100) / 100)); break;
         case "rest": if (c) { newDay(); c.dayClock = 0; toast(`A new day: ${c.day}.`, "info"); } break;
-        case "save": toast(save() ? "Campaign saved." : "Couldn't save.", "info"); break;
+        case "save": toast(save(true) ? "Saving to the Allegiance server..." : "Nothing to save yet.", "info"); break;
         case "auto-organize": if (c) { const done = autoOrganize(c); toast(done.length ? `${done.length} appointments made.` : "Nothing to appoint.", done.length ? "good" : "info"); } break;
         case "select-member": selectedMember = Number(arg); break;
         case "member-page": memberPage = Math.max(0, memberPage + Number(arg)); break;
@@ -1206,17 +1198,70 @@ function act(name: string, arg?: unknown): void {
     }
 }
 
-function beginCampaign(): void {
+/** New Nation / New Party: founds it on the server, saves its first day there, joins the world. */
+async function beginNation(): Promise<void> {
     if (!setup.spawn && !setup.hometown) return;
     const def = setup.spawn ? regionDefById(setup.spawn) : null;
-    campaign = newCampaign({
-        partyName: setup.party, leader: setup.leader, ideology: setup.ideology, color: PARTY_COLORS[setup.color].color, spawn: def?.id, hometown: setup.hometown ?? (def ? { name: def.name, lat: def.lat, lon: def.lon, kind: "city" } : undefined),
+    const hometown = setup.hometown ?? (def ? { name: def.name, lat: def.lat, lon: def.lon, kind: "city" } : undefined);
+    await foundNation({
+        partyName: setup.party, leader: setup.leader, ideology: setup.ideology, color: PARTY_COLORS[setup.color].color, spawn: def?.id, hometown,
         seed: Math.floor(Math.random() * 2 ** 31),
-    });
-    startFoundingMission(campaign);
+    }, true);
+}
+
+async function foundNation(opts: NewCampaignOptions, mission: boolean): Promise<boolean> {
+    if (online.busy) return false;
+    const c = newCampaign(opts);
+    if (mission) startFoundingMission(c);
+    const home = regionDefById(c.party.hq)!;
+    try {
+        await online.found({ name: c.party.name, leader: c.party.leader, ideology: c.party.ideology, color: rgbaToHex(c.party.color), home: { name: home.name, lat: home.lat, lon: home.lon } });
+        await online.saveNow(c);
+    } catch (e) {
+        online.problem = `Could not found ${c.party.name}: ${(e as Error).message}`;
+        toast(online.problem, "bad");
+        return false;
+    }
+    if (!(await joinWorld(c))) return false;
+    campaign = c;
     for (const k of Object.keys(mags)) delete mags[k];
-    startLoading(campaign.player.lat, campaign.player.lon);
-    save();
+    startLoading(c.player.lat, c.player.lon);
+    return true;
+}
+
+/** Continue: your nation's save from the server. */
+async function continueNation(): Promise<boolean> {
+    if (online.busy) return false;
+    let c: Campaign;
+    try { c = await online.loadCampaign(); } catch (e) { online.problem = `Could not load your nation: ${(e as Error).message}`; toast(online.problem, "bad"); return false; }
+    if (!(await joinWorld(c))) return false;
+    campaign = c;
+    for (const k of Object.keys(mags)) delete mags[k];
+    startLoading(c.player.lat, c.player.lon);
+    return true;
+}
+
+async function joinWorld(c: Campaign): Promise<boolean> {
+    try {
+        await online.enterWorld(c);
+        return true;
+    } catch (e) {
+        online.leaveWorld();
+        online.problem = `Could not join the world: ${(e as Error).message}`;
+        toast(online.problem, "bad");
+        return false;
+    }
+}
+
+async function signInDialog(): Promise<void> {
+    const v = online.view();
+    const note = v.player?.anonymous && v.nation ? `This device plays ${v.nation.name} anonymously. Signing in to another account leaves it behind unless you create an account for it first.` : undefined;
+    await showAccountDialog({ mode: "signin", note, submit: (email, password) => online.signIn(email, password) });
+}
+
+async function createAccountDialog(): Promise<void> {
+    if (!online.api.player?.anonymous) { toast("You already have an account.", "info"); return; }
+    if (await showAccountDialog({ mode: "create", submit: (email, password) => online.createAccount(email, password) }) && campaign) save(true);
 }
 
 function view(): GameView {
@@ -1249,7 +1294,7 @@ function view(): GameView {
         stamina: Math.round(body.stamina * 50) / 50,
         aim: { ads: Math.round(aim.ads * 10) / 10, locked: !!assistPick, assist: controls().aimAssist },
         armor: c ? Math.round(c.player.armor / Math.max(1, armorById(c.player.armorId).armor || 1) * 50) / 50 : 0,
-        land, hasSave, time, firstPerson: body.firstPerson, piloting: !!flying,
+        land, hasSave: !!online?.api.nation, online: online?.view(), players: remoteView.length, time, firstPerson: body.firstPerson, piloting: !!flying,
         debug: null,
         markers: ui ? screenMarkers(ui.W, ui.H) : [],
         minimap: miniMap,
@@ -1373,6 +1418,21 @@ function drawPeople(): void {
     if (personLods.size > street.actors.length * 2) {
         const ids = new Set(street.actors.map(a => a.id));
         for (const id of [...personLods.keys()]) if (!ids.has(id)) personLods.delete(id);
+    }
+    // Other players in your room, in their nation's colors.
+    for (const rp of remoteView) {
+        if (rp.mode !== "foot") continue;
+        const [x, y, z] = remoteLocal(rp);
+        const d = Math.hypot(x - body.x, z - body.z);
+        if (d > 160) continue;
+        const rlook: PersonLook = { ...PLAYER_LOOK_BASE, weapon: weaponClass(rp.weapon) };
+        const rkey = people.ensure(rlook, d < 25 ? 0 : d < 70 ? 1 : 2);
+        if (!rkey) continue;
+        const col = hexToRgba(rp.color);
+        const dead = rp.health <= 0;
+        const phase = ((time * Math.max(0.5, rp.speed) * 1.7) % 6.2832) + 0.001;
+        addPerson(rkey, personMatrix(x, y, z, rp.yaw, dead), [col[0], col[1], col[2], dead ? 0 : Math.min(0.8, rp.speed * 0.2)],
+            [0.15, 0.14, 0.14, phase], rlook.skin, rlook.hair);
     }
     // You.
     counts[0]++;
@@ -2683,7 +2743,8 @@ function respawn(message: string): void {
     if (mode === "speech" || mode === "dialogue" || mode === "shop") { speech = null; dialogue = null; mode = "play"; }
     toast(message, "bad");
     toast("You regroup at your last safe position. The game is saved.", "info");
-    save();
+    online.rt.teleported();
+    save(true);
 }
 
 function resetStreetPlayer(): void {
@@ -2975,7 +3036,64 @@ function screenMarkers(W: number, H: number): ScreenMarker[] {
         const t = SHOP_TINT[sh.kind];
         out.push({ id: `shop-${r.key}`, kind: "shop", label: SHOP_NAMES[sh.kind].toUpperCase(), distance: distanceLabel(d / 1000), x: pr.x, y: pr.y, color: [t[0] * 1.3, t[1] * 1.3, t[2] * 1.3, 1], onScreen: true });
     }
+    // Other players: their leader and nation over them, out to 3 km.
+    for (const rp of remoteView) {
+        const [x, y, z] = remoteLocal(rp);
+        const d = Math.hypot(x - body.x, z - body.z, y - body.y);
+        if (d > 3000) continue;
+        const pr = project(basis, toWorld(f, x, y + 2.4, z), W, H, 40);
+        const col = hexToRgba(rp.color);
+        out.push({ id: `player-${rp.id}`, kind: "player", label: `${rp.leader.toUpperCase()} - ${rp.nation.toUpperCase()}${rp.stale ? " (NO SIGNAL)" : ""}`, distance: distanceLabel(d / 1000), x: pr.x, y: pr.y, color: [col[0], col[1], col[2], 1], onScreen: pr.onScreen });
+    }
     return out;
+}
+
+// --- Other players (src/net/realtime.ts) ---------------------------------------------------------
+
+/** Where you are, for the realtime room: feet on the planet, heading, how you move. */
+function netState(): LocalState {
+    const w = toWorld(frame!, body.x, body.y, body.z);
+    const ll = dirToLatLon(w);
+    return {
+        lat: ll.lat, lon: ll.lon, alt: length(w) - EARTH.radius, yaw: body.yaw,
+        mode: inCobra() ? "cobra" : driving() ? "car" : "foot", speed: body.speed,
+        health: Math.max(0, Math.round(street.player.health * 10) / 10), weapon: campaign!.player.weapon,
+    };
+}
+
+/** A remote player's feet in the local frame. */
+function remoteLocal(p: { lat: number; lon: number; alt: number }): Vec3 {
+    return toLocal(frame!, scale(latLonToDir(p.lat, p.lon), EARTH.radius + p.alt));
+}
+
+/** Your shot goes to the room too: the room decides whether it hits another player. */
+function sendShot(weapon: string, eye: Vec3, results: { end: Vec3 }[]): void {
+    if (!frame || !results.length) return;
+    const w = toWorld(frame, eye[0], eye[1], eye[2]);
+    const ll = dirToLatLon(w);
+    const pellets = results.map(r => {
+        const d = sub(r.end, eye);
+        const len = Math.max(0.01, length(d));
+        // Local x, y, z are east, up, north; the room works in east, north, up.
+        return { dir: [d[0] / len, d[2] / len, d[1] / len] as [number, number, number], length: len };
+    });
+    online.rt.shoot(weapon, { lat: ll.lat, lon: ll.lon, alt: length(w) - EARTH.radius }, pellets);
+}
+
+/** Another player's shot hit you (the room refereed it). */
+function onPlayerHit(m: Extract<ServerRoomMessage, { t: "hit" }>): void {
+    if (!campaign || !frame || street.player.dead) return;
+    hurtPlayer(street, m.damage);
+    toast(`${m.leader} shot you with a ${weaponById(m.weapon).name} (${Math.round(m.damage)}).`, "bad");
+}
+
+/** Another player fired: their tracers on your street. */
+function onRemoteShot(m: Extract<ServerRoomMessage, { t: "shot" }>): void {
+    if (!frame) return;
+    const [ax, ay, az] = remoteLocal(m);
+    for (const p of m.pellets) {
+        street.shots.push({ ax, ay, az, bx: ax + p.dir[0] * p.length, by: ay + p.dir[2] * p.length, bz: az + p.dir[1] * p.length, side: "enemy", hit: !!p.hit, age: 0 });
+    }
 }
 
 function updateMiniMap(dt: number): void {
@@ -3007,6 +3125,7 @@ function updateMiniMap(dt: number): void {
         else if (a.kind === "follower") dot(a.x, a.z, c.party.color, 5, "comrade");
     }
     if (playerCar && !playerCar.piloting) dot(playerCar.x, playerCar.z, [0.3, 0.7, 1, 1], 8, "car", true);
+    for (const rp of remoteView) { const [x, , z] = remoteLocal(rp); dot(x, z, hexToRgba(rp.color), 7, "player", true); }
     for (const p of placedCompounds) {
         const mission = c.mission && c.mission.step !== "done" && c.mission.compound === p.cs.id;
         dot(p.flag[0], p.flag[1], p.cs.captured ? c.party.color : mission ? [0.96, 0.78, 0.25, 1] : [0.9, 0.18, 0.15, 1], 11, p.cs.captured ? "hq" : "compound", true);
@@ -3061,6 +3180,7 @@ function snapshot() {
     const c = campaign;
     const rs = here();
     return {
+        online: online ? { ...online.view(), remotes: remoteView.map(r => ({ id: r.id, leader: r.leader, nation: r.nation, mode: r.mode, health: r.health, weapon: r.weapon, lat: r.lat, lon: r.lon, stale: r.stale })) } : null,
         mode, tab, frames: frameCount, time: r2(time),
         profile: profiling ? { disable: profileDisable, experiment: profileExperiment, freeze: profileFreeze } : null,
         materials: { missing: materialsMissing },
@@ -3206,13 +3326,39 @@ const TOOLS: { name: string; description: string; parameters: object; run: (a: A
             const hometown = typeof a.hometown === "string" ? (typeof a.lat === "number" && typeof a.lon === "number"
                 ? { name: a.hometown, lat: a.lat, lon: a.lon, kind: "village" } : (await resolvePlaces(a.hometown))[0]) : undefined;
             if (!def && !hometown) throw new Error("Give a known territory or a hometown name/coordinates.");
-            campaign = newCampaign({
+            if (online.phase !== "ready") await online.connect();
+            if (online.phase !== "ready") throw new Error(online.problem ?? "Not connected to the Allegiance server.");
+            const ok = await foundNation({
                 partyName: typeof a.party === "string" ? a.party : "People's Front", leader: typeof a.leader === "string" ? a.leader : undefined,
                 ideology: typeof a.ideology === "string" ? a.ideology : "solidarity", color: PARTY_COLORS[typeof a.color === "number" ? a.color : 0].color,
                 spawn: def?.id, hometown, seed: typeof a.seed === "number" ? a.seed : 2100, lat: typeof a.lat === "number" ? a.lat : undefined, lon: typeof a.lon === "number" ? a.lon : undefined,
-            });
-            if (a.mission !== false) startFoundingMission(campaign);
-            startLoading(campaign.player.lat, campaign.player.lon);
+            }, a.mission !== false);
+            if (!ok) throw new Error(online.problem ?? "Could not found the nation.");
+            return snapshot();
+        },
+    },
+    {
+        name: "allegiance_online",
+        description: "The Allegiance server: session, nation, realtime sockets, remote players. action: connect | continue | anonymous | create-account | signin (email, password) | report (the territory report now) | claim-test (region: id the party takes by war with army troops, for tests).",
+        parameters: { type: "object", properties: { action: { type: "string" }, email: { type: "string" }, password: { type: "string" }, region: { type: "string" }, army: { type: "number" } } },
+        run: async a => {
+            switch (a.action) {
+                case "connect": await online.connect(); break;
+                case "anonymous": await online.startAnonymous(); break;
+                case "continue": if (!(await continueNation())) throw new Error(online.problem ?? "Could not continue."); break;
+                case "create-account": await online.createAccount(String(a.email), String(a.password)); break;
+                case "signin": await online.signIn(String(a.email), String(a.password)); break;
+                case "report": if (campaign) await online.report(campaign); break;
+                case "claim-test": {
+                    const rs = campaign?.regions[String(a.region)];
+                    if (!campaign || !rs) throw new Error("No such region in this campaign.");
+                    rs.army = typeof a.army === "number" ? a.army : Math.max(rs.army, 50);
+                    takeRegion(campaign, rs, "war");
+                    await online.settled();
+                    break;
+                }
+            }
+            await online.settled();
             return snapshot();
         },
     },
@@ -3875,7 +4021,19 @@ export async function start(platform: Platform): Promise<void> {
         spawnMesh(`al-car-${i}`, flyingCar, item); showProp(`al-car-${i}`, false);
     }
     land = computeLand();
-    hasSave = !!loadSave();
+    online = new Online({
+        campaign: () => campaign,
+        toast,
+        hit: onPlayerHit,
+        shot: onRemoteShot,
+        territoryChanged: () => { territoryTimer = 99; skyTimer = 99; miniTimer = 99; },
+    });
+    void online.connect();
+    // Leaving with an anonymous nation: the browser asks first (it can still be saved to an account).
+    window.addEventListener("beforeunload", e => {
+        if (campaign) save(true);
+        if (campaign && online.api.player?.anonymous) { e.preventDefault(); e.returnValue = ""; }
+    });
     writeWorld();
     ui = new UiFrame(enginePainter(P.ui), 1600, 900);
     setupInput();
@@ -3994,6 +4152,9 @@ export function tick(): void {
             if (now2 !== region) { region = now2; toast(`Entering ${regionDefById(now2)!.name}.`, "info"); }
         }
     }
+    // The realtime room: your state out (while you are on the map), others in.
+    online.rt.update(live && frame && campaign ? netState() : null);
+    remoteView = frame && campaign ? online.rt.remotes() : [];
     if (frameCount % 30 === 0) updateSun();
     // Cached ground heights are refreshed while elevation data is arriving and once when the last
     // of it lands; with nothing arriving they are final (refreshing them on a timer re-sampled

@@ -17,7 +17,7 @@
 // unrest can turn into an insurgency. Govern three quarters of humanity and the planet is yours.
 
 import {
-    BLOCS, PARTY, RIVALS, SCHEMES, UNDECIDED, WORLD_POPULATION, blocById, factionById, regionDefById, type GovType,
+    BLOCS, PARTY, RIVALS, SCHEMES, UNDECIDED, WORLD_POPULATION, blocById, factionById, isNationFaction, regionDefById, type GovType,
 } from "./al_data";
 import {
     campaignRegions, type Campaign, type RegionState, type War, addKarma, baseGarrison, neighbors, partyShare, pushNews, shiftSupport,
@@ -73,6 +73,15 @@ const enemyQuality = (rs: RegionState): number => {
 
 // --- Taking and losing regions -------------------------------------------------------------------
 
+/**
+ * Told when the party takes or loses a region (al_net.ts reports these to the Allegiance server,
+ * which holds the territory map between players). `previous` is who governed before.
+ */
+export const territoryHooks: {
+    taken: ((c: Campaign, rs: RegionState, how: "election" | "coup" | "war", previous: string) => void) | null;
+    lost: ((c: Campaign, rs: RegionState, to: string, why: string) => void) | null;
+} = { taken: null, lost: null };
+
 export function takeRegion(c: Campaign, rs: RegionState, how: "election" | "coup" | "war"): void {
     const def = regionDefById(rs.id)!;
     const previous = rs.governor;
@@ -102,6 +111,7 @@ export function takeRegion(c: Campaign, rs: RegionState, how: "election" | "coup
     if (cs) { cs.captured = true; cs.garrison = 0; }
     const verb = how === "election" ? "wins the election in" : how === "coup" ? "seizes power in" : "conquers";
     pushNews(c, `${c.party.name} ${verb} ${def.name}! ${factionById(previous).name} is ousted.`, "good");
+    territoryHooks.taken?.(c, rs, how, previous);
 }
 
 export function loseRegion(c: Campaign, rs: RegionState, to: string, why: string): void {
@@ -118,6 +128,7 @@ export function loseRegion(c: Campaign, rs: RegionState, to: string, why: string
     if (cs) { cs.captured = false; cs.garrison = cs.maxGarrison; }
     shiftSupport(rs, to, 0.08);
     pushNews(c, `${def.name} falls to ${factionById(to).name}: ${why}.`, "bad");
+    territoryHooks.lost?.(c, rs, to, why);
 }
 
 // --- Player actions on the strategic level -------------------------------------------------------
@@ -493,7 +504,10 @@ function elections(c: Campaign, rs: RegionState, r: Rng): void {
     const pct = Math.round((results.find(x => x[0] === PARTY)?.[1] ?? 0) * 100);
     if (winner === PARTY && rs.governor !== PARTY) takeRegion(c, rs, "election");
     else if (winner !== PARTY && rs.governor === PARTY) loseRegion(c, rs, winner, `voted out (${pct}% for the party)`);
-    else if (winner !== rs.governor) {
+    else if (winner !== rs.governor && isNationFaction(rs.governor)) {
+        // Another player's nation governs: only a nation can unseat it, and the server decides that.
+        return;
+    } else if (winner !== rs.governor) {
         rs.governor = winner;
         pushNews(c, `${factionById(winner).name} wins the election in ${def.name}. The party took ${pct}%.`, "info");
     } else if (rs.members > 0 || partyShare(rs) > 0.02) {
@@ -707,8 +721,8 @@ export function advanceDay(c: Campaign, playerRegion: string | null = null): voi
             if (rs.war) stepWar(c, rs, r, playerRegion);
             else {
                 if (rs.ceasefire > 0) rs.ceasefire--;
-                // A regime at peace rebuilds its garrison.
-                if (rs.governor !== PARTY) {
+                // A regime at peace rebuilds its garrison (another nation's troops are what the server says).
+                if (rs.governor !== PARTY && !isNationFaction(rs.governor)) {
                     const base = baseGarrison(def, rs.gov);
                     if (rs.garrison < base) rs.garrison = Math.min(base, rs.garrison + Math.ceil(base * 0.02));
                 }

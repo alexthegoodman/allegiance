@@ -48,8 +48,9 @@ function render(g: GameView) {
 }
 
 describe("screens", () => {
-    it("title offers a new campaign and a disabled continue without a save", () => {
-        const g = view("title");
+    it("title offers a new nation and a disabled continue without one, once the server answers", () => {
+        const g = view("title", { online: { phase: "ready", problem: null, player: { id: "p", email: null, anonymous: true }, nation: null, busy: null,
+            net: { world: "off", room: "off", cell: null, online: 0, error: null }, saveError: null } });
         const { ids, ui, painter, log } = render(g);
         expect(ids).toContain("title-new");
         expect(log.strings).toContain("ALLEGIANCE");

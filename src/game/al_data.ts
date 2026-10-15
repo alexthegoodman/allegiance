@@ -252,7 +252,13 @@ export const FACTIONS: FactionDef[] = [
 ];
 
 export const RIVALS = FACTIONS.filter(f => f.id !== PARTY).map(f => f.id);
-export const factionById = (id: string): FactionDef => FACTIONS.find(f => f.id === id) ?? FACTIONS[1];
+
+/** Other players' nations, as factions (al_net.ts registers them from the server's territory map). */
+const nationFactions = new Map<string, FactionDef>();
+export const NATION_PREFIX = "nation-";
+export const isNationFaction = (id: string): boolean => id.startsWith(NATION_PREFIX);
+export function registerFaction(def: FactionDef): void { nationFactions.set(def.id, def); }
+export const factionById = (id: string): FactionDef => FACTIONS.find(f => f.id === id) ?? nationFactions.get(id) ?? FACTIONS[1];
 
 // --- Ideologies ----------------------------------------------------------------------------------
 

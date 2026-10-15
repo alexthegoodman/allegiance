@@ -400,6 +400,9 @@ function damageActor(st: StreetState, a: Actor, dmg: number, by: Side, byPlayer:
     if (st.rally && st.rally.orator === a.id) st.rally = null;
 }
 
+/** Damage from outside the street sim (another player's shot, refereed by the realtime room). */
+export function hurtPlayer(st: StreetState, dmg: number): void { damagePlayer(st, dmg); }
+
 function damagePlayer(st: StreetState, dmg: number): void {
     const p = st.player;
     if (p.dead || (p.shield ?? 0) > 0) return;
