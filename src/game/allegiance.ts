@@ -98,7 +98,7 @@ let shadowsEnabled = true;
 let shadowCascadeCount = SHADOW_RADII.length;
 let shadowMapSize = SHADOW_MAP_SIZE;
 let shadowsLive = false;
-let weather: Weather = { cloudCover: 0.35, windSpeed: 3, windHeading: 0.6 };
+let weather: Weather = { cloudCover: 0.35, windSpeed: 0, windHeading: 0 };
 let cloudDrift: Vec3 = [0, 0, 0];
 let cloudAltitude = 2700;
 /** Weather fixed by allegiance_config (tests, captures); null follows the day. */
@@ -1335,9 +1335,9 @@ function view(): GameView {
 const personLods = new Map<number, PersonLod>();
 let crowd: CrowdBatches | null = null;
 /** Scales people's LOD distances (allegiance_config peopleDetail): lower is faster. */
-let peopleDetail = 1;
+let peopleDetail = 0.5;
 /** Caps drawn people's cost (allegiance_config peopleMaxFull / peopleTriangles). */
-let peopleBudget: PeopleBudget = { ...DEFAULT_PEOPLE_BUDGET };
+let peopleBudget: PeopleBudget = { maxFull: 2, triangleBudget: 1_200_000 };
 /** People per level of detail last frame (including you), for the state report. */
 let lodCounts: [number, number, number] = [0, 0, 0];
 
@@ -1391,7 +1391,7 @@ function drawPeople(): void {
     // Who is drawn this frame, nearest first, with the LOD their distance asks for.
     const shown: { a: Actor; distance: number; lod: PersonLod }[] = [];
     for (const a of street.actors) {
-        if (a.aboard != null || Math.hypot(a.x - body.x, a.z - body.z) > 160) { personLods.delete(a.id); continue; }
+        if (a.aboard != null || Math.hypot(a.x - body.x, a.z - body.z) > 100) { personLods.delete(a.id); continue; }
         const center = toWorld(frame, a.x, a.y + 0.9, a.z);
         const actorDistance = cam ? distance(cam.position, center) : Math.hypot(a.x - body.x, a.z - body.z);
         const lod = personLod(actorDistance, personLods.get(a.id), peopleDetail);
@@ -2335,7 +2335,8 @@ function updateSun(): void {
     const el = (18 + 48 * Math.sin(Math.PI * t)) * Math.PI / 180;
     const horiz = normalize(add(scale(frame.east, Math.cos(Math.PI * t)), scale(frame.north, -0.45 * Math.sin(Math.PI * t))));
     setSunDirection(normalize(add(scale(frame.up, Math.sin(el)), scale(horiz, Math.cos(el)))));
-    weather = weatherHold ?? weatherAt(region ?? "street", campaign.day, t);
+    const wx = weatherHold ?? weatherAt(region ?? "street", campaign.day, t);
+    weather = { ...wx, windSpeed: weatherHold?.windSpeed ?? 0, windHeading: weatherHold?.windHeading ?? 0 };
     cloudAltitude = Math.max(0, sampleEarth(normalize(focus)).surface) + 2700;
 }
 
@@ -2398,10 +2399,10 @@ function stream(maxBuilds: number, maxMs: number): void {
  * Level-of-detail limits for the Mesha houses and city blocks (qp_city.ts CityOptions), on foot and
  * in the air. Full houses (rooms and all, ~150k triangles) only for the nearest two or three.
  */
-const HOUSE_LOD = { lod0Radius: 35, maxLod0: 3, lod1Radius: 220, triangleBudget: 1_500_000 };
-const HOUSE_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 220, triangleBudget: 1_200_000 };
-const BUILDING_LOD = { lod0Radius: 70, maxLod0: 24, lod1Radius: 500, triangleBudget: 2_500_000 };
-const BUILDING_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 500, triangleBudget: 2_000_000 };
+const HOUSE_LOD = { lod0Radius: 20, maxLod0: 1, lod1Radius: 140, triangleBudget: 800_000 };
+const HOUSE_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 140, triangleBudget: 600_000 };
+const BUILDING_LOD = { lod0Radius: 35, maxLod0: 8, lod1Radius: 300, triangleBudget: 1_200_000 };
+const BUILDING_LOD_AIR = { lod0Radius: 0, maxLod0: 0, lod1Radius: 300, triangleBudget: 1_000_000 };
 type LodLimits = typeof HOUSE_LOD;
 /** On-foot limits set by allegiance_config (houseLod / buildingLod); null: the defaults above. */
 let houseLod: LodLimits | null = null;
@@ -3965,7 +3966,7 @@ export async function start(platform: Platform): Promise<void> {
         if (materialsMissing.length) console.warn(`[allegiance] material maps missing (checkerboard): ${materialsMissing.join(", ")}`);
     }, e => console.warn(`[allegiance] material maps: ${(e as Error).message}`));
     people = new PeopleMeshes(P.meshCache);
-    await P.createEarth({ planet: EARTH, city: { house: houseRule() } });
+    await P.createEarth({ planet: EARTH, city: { house: houseRule() }, splitFactor: 1.1, triangleBudget: 1_000_000 });
     setTerrainBackend({
         sample: (_p, d) => P.earth.sample(d),
         normal: (_p, d, s) => P.earth.normal(d, s),
@@ -4213,7 +4214,7 @@ export function tick(): void {
     timed("    al fx draw", drawFx);
     drawViewModel();
     updateSky(dt);
-    if (frame) cloudDrift = add(cloudDrift, scale(windVector(weather, frame.east, frame.north), CLOUD_WIND_FACTOR * dt));
+    if (frame && weather.windSpeed > 0) cloudDrift = add(cloudDrift, scale(windVector(weather, frame.east, frame.north), CLOUD_WIND_FACTOR * dt));
     updateMiniMap(dt);
     updateTerritories(dt);
     const loadingNow = mode === "loading";

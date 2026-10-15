@@ -5,7 +5,7 @@
 // around you (buildings and water from the nav grid) with the same places as dots.
 
 import { type Vec3, cross, dot, normalize, sub } from "../quadplanet/qp_math";
-import { PARTY, factionById, type RGBA } from "./al_data";
+import { PARTY, factionById, regionDefById, type RGBA } from "./al_data";
 import { type Campaign, EARTH_RADIUS_KM, angularDistance, campaignRegions } from "./al_state";
 
 // --- Projection ----------------------------------------------------------------------------------
@@ -101,7 +101,12 @@ export function skyMarkers(c: Campaign, lat: number, lon: number, opts: { rangeK
         const km = angularDistance(lat, lon, cs.lat, cs.lon) * EARTH_RADIUS_KM;
         const isMission = cs.id === opts.missionCompound;
         if (cs.captured || (km > compoundKm && !isMission)) continue;
-        out.push({ id: cs.id, kind: isMission ? "mission" : "compound", label: isMission ? "OBJECTIVE: OUTPOST" : "MILITARY COMPOUND", lat: cs.lat, lon: cs.lon, km,
+        const town = regionDefById(cs.settlement)?.name?.toUpperCase() ?? (cs.settlement ? cs.settlement.toUpperCase() : "");
+        const base = cs.kind === "outpost"
+            ? (town ? `${town} OUTPOST` : "OUTPOST")
+            : (town ? `${town} OUTPOST` : "MILITARY OUTPOST");
+        const label = isMission ? `OBJECTIVE: ${base}` : base;
+        out.push({ id: cs.id, kind: isMission ? "mission" : "compound", label, lat: cs.lat, lon: cs.lon, km,
             color: isMission ? GOLD : ENEMY, lift: 60 });
     }
     const hq = c.party.hqSite;

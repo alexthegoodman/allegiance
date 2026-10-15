@@ -161,7 +161,7 @@ export interface StreetState {
 /** Seconds comrades keep fighting after the last shot. */
 export const ENGAGE_SECONDS = 25;
 
-export const CIVILIAN_TARGET = 34;
+export const CIVILIAN_TARGET = 24;
 export const SPAWN_MIN = 25;
 export const SPAWN_MAX = 130;
 export const DESPAWN = 175;

@@ -120,7 +120,7 @@ export interface LodSettings {
     minLevel: number;
 }
 
-export const DEFAULT_LOD: LodSettings = { splitFactor: 1.5, minLevel: 1 };
+export const DEFAULT_LOD: LodSettings = { splitFactor: 1.1, minLevel: 1 };
 
 export interface Selection {
     /** Leaves with their ground centers. */

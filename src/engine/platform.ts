@@ -64,8 +64,8 @@ export class Platform {
     }
 
     /** Starts Earth (its worker, the elevation pyramid, the city). */
-    async createEarth(config: { planet: PlanetDef; city?: CityConfig }): Promise<void> {
-        this.earth = new EarthSystem({ planet: config.planet, baseTile: await loadBaseTile(`${BASE}terrarium_z0.png`), city: config.city });
+    async createEarth(config: { planet: PlanetDef; city?: CityConfig; splitFactor?: number; minLevel?: number; triangleBudget?: number }): Promise<void> {
+        this.earth = new EarthSystem({ planet: config.planet, baseTile: await loadBaseTile(`${BASE}terrarium_z0.png`), city: config.city, splitFactor: config.splitFactor, minLevel: config.minLevel, triangleBudget: config.triangleBudget });
     }
 
     /** Loads the material maps and binds them to every world material. */

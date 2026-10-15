@@ -38,7 +38,7 @@ export type ChunkDetail =
 // you see from orbit, tens of kilometers each) get more vertices so coastlines and the limb
 // don't turn blocky; there are only a few dozen of them, so they are cheap.
 export const DEFAULT_CHUNK_DETAIL: ChunkDetail | undefined = {
-    mode: "explicit", verticesPerLevel: [64, 32, 32, 32, 32, 32, 32, 32, 32, 48, 48, 64, 64, 64],
+    mode: "explicit", verticesPerLevel: [32, 24, 24, 24, 24, 24, 24, 24, 24, 32, 32, 48, 48, 48],
 };
 
 // Earth (6,371 km radius) needs 20 levels for the same ~19 m leaf chunks: its root faces are
@@ -47,5 +47,5 @@ export const DEFAULT_CHUNK_DETAIL: ChunkDetail | undefined = {
 // on the ground horizon culling leaves none of them. The Rust streamer keeps the whole solar
 // system under its triangle budget (2M by default) by tightening the split distance if it has to.
 export const EARTH_CHUNK_DETAIL: ChunkDetail = {
-    mode: "explicit", verticesPerLevel: [64, ...Array(13).fill(32), 48, 48, 96, 128, 128, 128],
+    mode: "explicit", verticesPerLevel: [48, ...Array(13).fill(20), 24, 24, 32, 48, 48, 48],
 };

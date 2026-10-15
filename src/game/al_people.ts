@@ -45,7 +45,7 @@ export interface PeopleBudget {
     triangleBudget: number;
 }
 
-export const DEFAULT_PEOPLE_BUDGET: PeopleBudget = { maxFull: 6, triangleBudget: 3_000_000 };
+export const DEFAULT_PEOPLE_BUDGET: PeopleBudget = { maxFull: 2, triangleBudget: 1_200_000 };
 
 /**
  * Caps what a crowd costs: given each drawn person's wanted LOD in order of distance (nearest

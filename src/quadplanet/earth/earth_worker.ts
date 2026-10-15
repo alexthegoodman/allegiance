@@ -105,7 +105,7 @@ scope.onmessage = (e: MessageEvent<EarthWorkerIn>) => {
             const lod = { ...DEFAULT_LOD };
             if (m.config.splitFactor !== undefined) lod.splitFactor = Math.max(0.25, Math.min(8, m.config.splitFactor));
             if (m.config.minLevel !== undefined) lod.minLevel = m.config.minLevel;
-            streamer = new PlanetStreamer(lod, Math.max(10_000, m.config.triangleBudget ?? 2_000_000));
+            streamer = new PlanetStreamer(lod, Math.max(10_000, m.config.triangleBudget ?? 1_000_000));
             const cc = m.config.city ?? { enabled: true };
             city = cc.enabled === false || offline ? null : new CityLayer(0, cc, {
                 center: def.center, radius: def.radius, hasSea: def.hasSea, spacing: planet.finestSpacing(), elevation, rule: { ...DEFAULT_HOUSE_RULE },

@@ -44,7 +44,7 @@ export const MAT_CLEAR_GLASS = 7;
 export const INTERIOR_REGIONS = new Set(["interior", "ceiling", "floors", "leaf", "treads", "stair"]);
 
 /** LOD 1 simplification: error in meters, and parts smaller than this are dropped. */
-export const LOD1_SIMPLIFY = { maxError: 0.05, minFeature: 0.2 };
+export const LOD1_SIMPLIFY = { maxError: 0.08, minFeature: 0.25, targetRatio: 0.25 };
 
 export interface CityBuilding {
     key: string;
@@ -233,7 +233,7 @@ export interface CityOptions {
     reselectMs: number;
 }
 
-export const DEFAULT_CITY_OPTIONS: CityOptions = { lod0Radius: 45, maxLod0: 8, lod1Radius: 350, triangleBudget: 3_000_000, minBuildIntervalMs: 0, sizeStep: 0.5, reselectDistance: 1, reselectMs: 0 };
+export const DEFAULT_CITY_OPTIONS: CityOptions = { lod0Radius: 20, maxLod0: 2, lod1Radius: 180, triangleBudget: 1_000_000, minBuildIntervalMs: 0, sizeStep: 0.5, reselectDistance: 1, reselectMs: 0 };
 
 /** Background house evaluations queued at once (the worker runs them one by one). */
 const MAX_IN_FLIGHT = 4;
