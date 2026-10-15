@@ -1556,17 +1556,110 @@ function drawMiniMap(g: GameView, ui: UiFrame): void {
     if (!m) return;
     const { p, W, H } = ui;
     const size = MINIMAP_SIZE, x0 = W - size - 16, y0 = H - size - 56, k = size / m.cells;
-    p.rect(x0 - 3, y0 - 3, size + 6, size + 6, [0.04, 0.035, 0.035, 0.9], 2, THEME.gold);
-    p.rect(x0, y0, size, size, [0.2, 0.24, 0.18, 0.85]);
-    for (const [row, a, b, what] of m.runs)
-        p.rect(x0 + a * k, y0 + row * k, (b - a + 1) * k, k, what === 2 ? [0.15, 0.3, 0.5, 0.95] : [0.55, 0.52, 0.46, 0.95]);
-    for (const d of m.dots) p.rect(x0 + d.x * k - d.size / 2, y0 + d.y * k - d.size / 2, d.size, d.size, d.color, 1, THEME.black);
-    // You: a dot and three ticks toward where you face.
+
+    // Minimap frame & base land ground
+    p.rect(x0 - 3, y0 - 3, size + 6, size + 6, [0.04, 0.035, 0.035, 0.92], 2, THEME.gold);
+    p.rect(x0, y0, size, size, [0.17, 0.22, 0.16, 0.88]);
+
+    // Water & terrain runs
+    for (const [row, a, b, what] of m.runs) {
+        p.rect(x0 + a * k, y0 + row * k, (b - a + 1) * k, k, what === 2 ? [0.12, 0.24, 0.42, 0.95] : [0.55, 0.52, 0.46, 0.95]);
+    }
+
     const cx = x0 + size / 2, cy = y0 + size / 2;
-    for (let i = 1; i <= 3; i++) p.rect(cx + Math.sin(m.heading) * i * 5 - 1.5, cy - Math.cos(m.heading) * i * 5 - 1.5, 3, 3, THEME.cream);
+
+    // Subtle navigation crosshair ticks
+    p.rect(cx - 0.5, y0, 1, 4, [0.95, 0.78, 0.25, 0.35]);
+    p.rect(cx - 0.5, y0 + size - 4, 1, 4, [0.95, 0.78, 0.25, 0.35]);
+    p.rect(x0, cy - 0.5, 4, 1, [0.95, 0.78, 0.25, 0.35]);
+    p.rect(x0 + size - 4, cy - 0.5, 4, 1, [0.95, 0.78, 0.25, 0.35]);
+
+    // Plotted course line to autopilot destination (if any)
+    if (m.course) {
+        const destX = x0 + m.course.x * k, destY = y0 + m.course.y * k;
+        const dist = Math.hypot(destX - cx, destY - cy);
+        const steps = Math.max(4, Math.floor(dist / 8));
+        for (let s = 1; s < steps; s++) {
+            const t = s / steps;
+            const lx = cx + (destX - cx) * t;
+            const ly = cy + (destY - cy) * t;
+            p.rect(lx - 1.5, ly - 1.5, 3, 3, [0.2, 0.85, 1, 0.75]);
+        }
+    }
+
+    // Dots (Towns, Cities, HQs, Waypoints, Vehicles)
+    for (const d of m.dots) {
+        const px = x0 + d.x * k;
+        const py = y0 + d.y * k;
+        const half = d.size / 2;
+
+        if (d.kind === "city") {
+            // Major City: prominent colored marker with outer border and center pip
+            p.rect(px - half - 1, py - half - 1, d.size + 2, d.size + 2, d.outline ?? THEME.black);
+            p.rect(px - half, py - half, d.size, d.size, d.color);
+            p.rect(px - 1.5, py - 1.5, 3, 3, THEME.cream);
+        } else if (d.kind === "town") {
+            // Town: clean colored square with border
+            p.rect(px - half, py - half, d.size, d.size, d.color, 1, d.outline ?? THEME.black);
+        } else if (d.kind === "hq") {
+            // Party HQ: Gold double ring
+            p.rect(px - half - 2, py - half - 2, d.size + 4, d.size + 4, THEME.gold);
+            p.rect(px - half, py - half, d.size, d.size, d.color, 1, THEME.black);
+            p.rect(px - 1.5, py - 1.5, 3, 3, THEME.cream);
+        } else if (d.kind === "autopilot" || d.kind === "mission") {
+            p.rect(px - half - 2, py - half - 2, d.size + 4, d.size + 4, THEME.black);
+            p.rect(px - half, py - half, d.size, d.size, d.color, 1.5, THEME.gold);
+        } else {
+            p.rect(px - half, py - half, d.size, d.size, d.color, 1, d.outline ?? THEME.black);
+        }
+
+        // Clickable hotspot to plot course / engage autopilot to this location
+        if (d.id && (d.kind === "city" || d.kind === "town" || d.kind === "hq")) {
+            ui.hotspot(`minimap-${d.id}`, px - half - 4, py - half - 4, d.size + 8, d.size + 8, () => g.act("autopilot", d.id));
+        }
+    }
+
+    // Town & City labels pass (drawn over dots so text remains sharp and visible)
+    for (const d of m.dots) {
+        if (!d.label) continue;
+        const px = x0 + d.x * k;
+        const py = y0 + d.y * k;
+        const isMajor = d.kind === "city" || d.kind === "hq" || d.kind === "autopilot" || d.kind === "mission";
+        const fSize = isMajor ? 10 : 9;
+        const font = isMajor ? FONT.head : FONT.body;
+        const tw = textWidth(d.label, fSize, font);
+
+        let lx = px + d.size / 2 + 3;
+        if (lx + tw > x0 + size - 4) {
+            lx = px - d.size / 2 - 3 - tw;
+        }
+        lx = Math.max(x0 + 4, Math.min(x0 + size - tw - 4, lx));
+        let ly = py - fSize / 2 - 1;
+        ly = Math.max(y0 + 14, Math.min(y0 + size - 20, ly));
+
+        const textColor: Color = isMajor ? THEME.cream : [0.92, 0.9, 0.85, 0.95];
+        p.text(d.label, lx, ly, fSize, textColor, font, 0, 0, [0.04, 0.04, 0.04, 0.75]);
+    }
+
+    // You: a dot and ticks pointing where you face
+    const sinH = Math.sin(m.heading), cosH = Math.cos(m.heading);
+    for (let i = 1; i <= 4; i++) {
+        const tx = cx + sinH * i * 5;
+        const ty = cy - cosH * i * 5;
+        p.rect(tx - 1.5, ty - 1.5, 3, 3, i === 4 ? THEME.gold : THEME.cream);
+    }
     p.rect(cx - 4, cy - 4, 8, 8, THEME.gold, 2, THEME.black);
-    p.text("N", x0 + size / 2 - 5, y0 - 2, 12, THEME.gold, FONT.head);
-    p.text(`${Math.round(m.cells * m.cellMeters)} m`, x0 + 4, y0 + size - 18, 11, THEME.cream, FONT.head);
+    p.rect(cx - 1, cy - 1, 2, 2, THEME.black);
+
+    // North indicator
+    p.rect(x0 + size / 2 - 9, y0 + 1, 18, 14, [0.04, 0.035, 0.035, 0.85]);
+    p.textC("N", x0 + size / 2, y0 + 2, 11, THEME.gold, FONT.head);
+
+    // Regional scale label (e.g. "264 KM" or "50 m")
+    const totalMeters = Math.round(m.cells * m.cellMeters);
+    const scaleStr = totalMeters >= 1000 ? `${Math.round(totalMeters / 1000)} KM` : `${totalMeters} m`;
+    p.rect(x0 + 3, y0 + size - 17, textWidth(scaleStr, 10, FONT.head) + 8, 14, [0.04, 0.035, 0.035, 0.8]);
+    p.text(scaleStr, x0 + 6, y0 + size - 16, 10, THEME.cream, FONT.head);
 }
 
 function drawCaptureAndFlight(g: GameView, ui: UiFrame): void {

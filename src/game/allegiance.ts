@@ -6,7 +6,7 @@ import { useItem, quickHealItem, shopForBuilding, shopStock, buyStock, sellItem,
 import { compoundsNear, compoundLayout, compoundToLocal, findClearSite, stepCapture, defenderDown, FLAG_REACH, GUARDS_AT_ONCE, type CompoundLayout } from "./al_military";
 import { startFoundingMission, updateMission, missionCompound, completeMission } from "./al_mission";
 import { houseAtDoor, entryPoint, exitPoint, clampInside, atDoorInside, spotInside, doorSide } from "./al_interior";
-import { cameraBasis, calibrate, project, skyMarkers, distanceLabel, miniMapRuns, toMapCell, type CameraBasis, type ScreenMarker, type SkyMarker, type MiniMap } from "./al_markers";
+import { cameraBasis, calibrate, project, skyMarkers, distanceLabel, miniMapRuns, toMapCell, type CameraBasis, type ScreenMarker, type SkyMarker, type MiniMap, type MapRun, type MiniMapDot } from "./al_markers";
 import { FoliageMeshes, cacheProps, scatterAround, lawnAround, RoadMask, roadSegments, scatterMesh, batchKey, meshOfBatch, tileOf, shadowClass, familyOfMesh, propKey, PROPS, SCATTER_NAMESPACE, SHOP_TINT, type ScatterItem, type ShadowClass } from "./al_scatter";
 import { InstanceBatches } from "../quadplanet/qp_instances";
 import { housingUnits, trafficCount, trafficPose, TRAFFIC_LIMIT } from "./al_traffic";
@@ -49,7 +49,7 @@ import type { Platform } from "../engine/platform";
 import type { Drawable } from "../engine/drawables";
 import type { EarthStats } from "../quadplanet/earth/system";
 import {
-    PARTY, PARTY_COLORS, REGIONS, RIVALS, IDEOLOGIES, blocById, regionDefById, weaponById, armorById, pamphletById, factionById,
+    PARTY, PARTY_COLORS, REGIONS, RIVALS, IDEOLOGIES, blocById, countryOf, regionDefById, weaponById, armorById, pamphletById, factionById, type RGBA,
 } from "./al_data";
 import { campaignRegions, discoverSettlement, type NewCampaignOptions, type Campaign, type CompoundState, type RegionState, newCampaign, regionAt, partyShare, shiftSupport, pushNews, addKarma, angularDistance, EARTH_RADIUS_KM, SAVE_VERSION } from "./al_state";
 import {
@@ -313,7 +313,7 @@ function startLoading(lat: number, lon: number): void {
     cobra = null; cobraState = null; missiles = []; pieces = []; ruinRects = []; clearFx(fx); damage.taken.clear();
     blownProps.clear(); scatterBurnReset();
     indoors = null; shopState = null; placedCompounds = []; compoundSig = ""; captureView = null;
-    scatterItems = []; scatterDirty = true; skyCache = []; miniMap = null; skyTimer = 99;
+    scatterItems = []; scatterDirty = true; skyCache = []; miniMap = null; skyTimer = 99; miniMapCachedRuns = []; miniMapRunsOrigin = [-1e9, -1e9];
     const firstPerson = body.firstPerson;
     body = newBody(0, 0, 0);
     body.firstPerson = firstPerson;
@@ -2994,6 +2994,9 @@ let tangents = { tanX: 0.414 * 16 / 9, tanY: 0.414 };
 let tangentTimer = 99;
 let miniMap: MiniMap | null = null;
 let miniTimer = 99;
+let miniMapCachedRuns: MapRun[] = [];
+let miniMapRunsOrigin: [number, number] = [-1e9, -1e9];
+let miniMapRunsMeters = 0;
 
 function updateSky(dt: number): void {
     const c = campaign;
@@ -3109,44 +3112,132 @@ function onRemoteShot(m: Extract<ServerRoomMessage, { t: "shot" }>): void {
 
 function updateMiniMap(dt: number): void {
     miniTimer += dt;
-    if (miniTimer < 0.3) return;
+    if (miniTimer < 0.25) return;
     miniTimer = 0;
     const c = campaign;
     if (!c || !nav || !frame || !(mode === "play" || mode === "dialogue" || mode === "shop")) { miniMap = null; return; }
-    const g = nav;
-    const cells = 44, cellMeters = driving() ? 12 : 6;
-    const what = (x: number, z: number) => {
-        const [i, j] = g.cellOf(x, z);
-        return g.inBounds(i, j) ? g.blocked[j * g.size + i] : 0;
+
+    // State-sized scale: 6 km/cell on foot (264 km across), 8 km/cell in flight/car (352 km across)
+    const cells = 44;
+    const cellMeters = driving() ? 8000 : 6000;
+    const maxRadiusMeters = (cells / 2) * cellMeters * 1.414;
+
+    // Cache regional terrain runs (sea vs land) based on movement
+    const dx = Math.abs(body.x - miniMapRunsOrigin[0]);
+    const dz = Math.abs(body.z - miniMapRunsOrigin[1]);
+    if (dx > cellMeters * 0.25 || dz > cellMeters * 0.25 || cellMeters !== miniMapRunsMeters || miniMapCachedRuns.length === 0) {
+        miniMapRunsOrigin = [body.x, body.z];
+        miniMapRunsMeters = cellMeters;
+        const what = (x: number, z: number) => {
+            const w = toWorld(frame!, x, 0, z);
+            const d = normalize(w);
+            return sampleEarth(d, 40_000).sea ? 2 : 0;
+        };
+        miniMapCachedRuns = miniMapRuns(what, body.x, body.z, cells, cellMeters);
+    }
+
+    const m: MiniMap = {
+        cells,
+        cellMeters,
+        runs: miniMapCachedRuns,
+        dots: [],
+        heading: body.yaw,
+        course: null,
     };
-    const m: MiniMap = { cells, cellMeters, runs: miniMapRuns(what, body.x, body.z, cells, cellMeters), dots: [], heading: body.yaw };
-    const dot = (x: number, z: number, color: [number, number, number, number], size: number, kind: string, clamp = false) => {
+
+    const dot = (x: number, z: number, color: RGBA, size: number, kind: string, label?: string, outline?: RGBA, id?: string, clamp = false) => {
         const p = toMapCell(m, body.x, body.z, x, z, clamp);
-        if (p) m.dots.push({ ...p, color, size, kind });
+        if (p) m.dots.push({ ...p, color, size, kind, label, outline, id });
+        return p;
     };
-    // Shops in their awning's color, ringed in gold.
-    for (const s of shopsHere) {
-        const t = SHOP_TINT[s.kind];
-        dot(s.x, s.z, THEME.gold, 10, "shop-ring");
-        dot(s.x, s.z, [t[0] * 1.3, t[1] * 1.3, t[2] * 1.3, 1], 7, "shop");
+
+    // Discover any newly streamed settlements from the earth system
+    for (const place of stats?.settlements ?? []) discoverSettlement(c, place);
+
+    // Towns and cities in this state-sized region
+    const { lat: pLat, lon: pLon } = c.player;
+    const allPlaces = campaignRegions(c);
+    const nearby = allPlaces
+        .map(r => ({ r, distKm: angularDistance(pLat, pLon, r.lat, r.lon) * EARTH_RADIUS_KM }))
+        .filter(item => item.distKm * 1000 <= maxRadiusMeters)
+        .sort((a, b) => {
+            const aCity = !a.r.parent || a.r.kind === "city" || a.r.pop >= 5;
+            const bCity = !b.r.parent || b.r.kind === "city" || b.r.pop >= 5;
+            if (aCity !== bCity) return aCity ? -1 : 1;
+            return a.distKm - b.distKm;
+        });
+
+    for (const { r } of nearby.slice(0, 36)) {
+        const d = latLonToDir(r.lat, r.lon);
+        const pLocal = toLocal(frame, scale(d, EARTH.radius));
+        const tx = pLocal[0], tz = pLocal[2];
+        const rs = c.regions[r.id];
+        const governor = rs?.governor ?? countryOf(r).ruler;
+        const col: RGBA = governor === PARTY ? c.party.color : factionById(governor).color;
+        const isHq = c.party.hq === r.id || (c.party.hqSite && angularDistance(r.lat, r.lon, c.party.hqSite.lat, c.party.hqSite.lon) * EARTH_RADIUS_KM < 3);
+        const isCity = !r.parent || r.kind === "city" || r.pop >= 5;
+        const kind = isHq ? "hq" : isCity ? "city" : "town";
+        const size = isHq ? 13 : isCity ? 11 : 7;
+        const outline: RGBA = isHq ? THEME.gold : [0.05, 0.05, 0.05, 0.95];
+        dot(tx, tz, col, size, kind, r.name.toUpperCase(), outline, r.id);
     }
-    for (const a of street.actors) {
-        if (!alive(a)) continue;
-        if (a.kind === "soldier" && (a.alerted || !a.post)) dot(a.x, a.z, [0.95, 0.2, 0.15, 1], 5, "enemy");
-        else if (a.kind === "follower") dot(a.x, a.z, c.party.color, 5, "comrade");
+
+    // Autopilot destination & plotted course line
+    if (autopilot) {
+        const apDir = latLonToDir(autopilot.lat, autopilot.lon);
+        const apLocal = toLocal(frame, scale(apDir, EARTH.radius));
+        const apCell = toMapCell(m, body.x, body.z, apLocal[0], apLocal[2], true);
+        if (apCell) {
+            m.course = { x: apCell.x, y: apCell.y };
+            m.dots.push({
+                ...apCell,
+                color: [0.2, 0.85, 1, 1],
+                size: 11,
+                kind: "autopilot",
+                label: autopilot.name.toUpperCase(),
+                outline: THEME.gold,
+                id: "autopilot",
+            });
+        }
     }
-    if (playerCar && !playerCar.piloting) dot(playerCar.x, playerCar.z, [0.3, 0.7, 1, 1], 8, "car", true);
-    for (const rp of remoteView) { const [x, , z] = remoteLocal(rp); dot(x, z, hexToRgba(rp.color), 7, "player", true); }
+
+    // Active mission destination
+    if (c.mission && c.mission.step !== "done" && c.mission.compound) {
+        const cmp = c.compounds?.[c.mission.compound];
+        if (cmp) {
+            const mDir = latLonToDir(cmp.lat, cmp.lon);
+            const mLocal = toLocal(frame, scale(mDir, EARTH.radius));
+            const mCell = toMapCell(m, body.x, body.z, mLocal[0], mLocal[2], true);
+            if (mCell && (!m.course || Math.hypot(mCell.x - m.course.x, mCell.y - m.course.y) > 2)) {
+                m.dots.push({
+                    ...mCell,
+                    color: [0.96, 0.78, 0.25, 1],
+                    size: 11,
+                    kind: "mission",
+                    label: "MISSION",
+                    outline: THEME.black,
+                    id: "mission",
+                });
+            }
+        }
+    }
+
+    // Placed compounds
     for (const p of placedCompounds) {
-        const mission = c.mission && c.mission.step !== "done" && c.mission.compound === p.cs.id;
-        dot(p.flag[0], p.flag[1], p.cs.captured ? c.party.color : mission ? [0.96, 0.78, 0.25, 1] : [0.9, 0.18, 0.15, 1], 11, p.cs.captured ? "hq" : "compound", true);
+        const isMission = c.mission && c.mission.step !== "done" && c.mission.compound === p.cs.id;
+        const col: RGBA = p.cs.captured ? c.party.color : isMission ? [0.96, 0.78, 0.25, 1] : [0.9, 0.18, 0.15, 1];
+        dot(p.flag[0], p.flag[1], col, p.cs.captured ? 11 : 9, p.cs.captured ? "hq" : "compound", p.cs.captured ? "HQ" : undefined, p.cs.captured ? THEME.gold : THEME.black, p.cs.id);
     }
-    for (const s of skyCache) {
-        if (s.kind !== "mission" && s.kind !== "hq") continue;
-        if (placedCompounds.some(p => p.cs.id === s.id || (s.kind === "hq" && p.cs.captured))) continue;
-        const [x, z] = localOf(s.lat, s.lon);
-        dot(x, z, s.color, 9, s.kind, true);
+
+    // Player car & other players
+    if (playerCar && !playerCar.piloting) {
+        dot(playerCar.x, playerCar.z, [0.3, 0.7, 1, 1], 8, "car", "CAR", THEME.black, "car", true);
     }
+    for (const rp of remoteView) {
+        const [x, , z] = remoteLocal(rp);
+        dot(x, z, hexToRgba(rp.color), 7, "player", rp.leader.toUpperCase(), THEME.black, rp.id, true);
+    }
+
     miniMap = m;
 }
 

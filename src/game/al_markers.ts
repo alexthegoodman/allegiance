@@ -125,15 +125,28 @@ export interface ScreenMarker { id: string; kind: MarkerKind; label: string; dis
 /** Runs of blocked cells per row: [row, firstColumn, lastColumn, what (1 building, 2 water)]. */
 export type MapRun = [number, number, number, number];
 
+export interface MiniMapDot {
+    x: number;
+    y: number;
+    color: RGBA;
+    size: number;
+    kind: string;
+    id?: string;
+    label?: string;
+    outline?: RGBA;
+}
+
 export interface MiniMap {
     /** Cells per side, and meters per cell. */
     cells: number;
     cellMeters: number;
     runs: MapRun[];
     /** Places on the map, in cell units from the top-left (north up). */
-    dots: { x: number; y: number; color: RGBA; size: number; kind: string }[];
+    dots: MiniMapDot[];
     /** Your heading (radians clockwise from north). */
     heading: number;
+    /** Plotted course destination in cell units. */
+    course?: { x: number; y: number } | null;
 }
 
 /**
