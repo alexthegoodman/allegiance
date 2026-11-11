@@ -819,6 +819,102 @@ export function dress(h: FigureHandle, params: Partial<OutfitParams> = {}): Outf
     return { mesh: { parts }, garments, under };
 }
 
+/**
+ * A cheap stand-in for draped clothes (for games and crowds): no cloth at all, the garments painted
+ * onto the body instead. The `skin` parts are cut exactly where each garment would end (inside its
+ * eased pieces, its hems and its cuts, as `shellOf` decides for the cloth itself), and what a
+ * garment covers moves to its region; the top is laid over the bottom. Every other part is
+ * returned as is. Skirts and dresses come out skin-tight.
+ */
+export function paintOutfit(h: FigureHandle, parts: Part[], params: Partial<OutfitParams> = {}): Part[] {
+    const o: OutfitParams = { ...DEFAULT_OUTFIT, ...params };
+    const garments = [topSpec(h, o), bottomSpec(h, o)].filter((s): s is GarmentSpec => s !== null).map(spec => {
+        const fields = spec.pieces.map(p => fieldOf(p.node));
+        const [yLo, yHi] = spec.yRange;
+        // Negative where the garment covers the body.
+        const cover = (x: number, y: number, z: number): number => {
+            let owner = 0, best = Infinity, inside = Infinity;
+            for (let i = 0; i < fields.length; i++) {
+                const d = fields[i](x, y, z);
+                inside = Math.min(inside, d);
+                if (Math.abs(d) < best) { best = Math.abs(d); owner = i; }
+            }
+            let c = Math.max(inside, yLo - y, y - yHi);
+            for (const k of spec.pieces[owner].keep) c = Math.max(c, k(x, y, z));
+            for (const k of spec.cuts) c = Math.max(c, k(x, y, z));
+            return c;
+        };
+        return { region: spec.region, cover };
+    });
+    if (!garments.length) return parts;
+    const out: Part[] = [];
+    for (const part of parts) {
+        if (part.region !== "skin") { out.push(part); continue; }
+        let rest = part;
+        for (const g of garments) {
+            const [covered, bare] = clipPart(rest, g.cover, g.region);
+            if (covered.indices.length) out.push(covered);
+            rest = bare;
+        }
+        if (rest.indices.length) out.push(rest);
+    }
+    return out;
+}
+
+/** Splits a part along the zero of `f`: [where f <= 0 (named `region`), the rest]. */
+function clipPart(part: Part, f: Field, region: string): [Part, Part] {
+    const P = part.positions.slice(), N = part.normals.slice(), U = part.uvs.slice();
+    const nv = P.length / 3;
+    const C: number[] = [];
+    for (let v = 0; v < nv; v++) C.push(f(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]));
+    const edges = new Map<number, number>();
+    const cross = (a: number, b: number): number => {
+        const key = a < b ? a * nv + b : b * nv + a;
+        let v = edges.get(key);
+        if (v === undefined) {
+            const t = C[a] / (C[a] - C[b]);
+            v = P.length / 3;
+            for (let k = 0; k < 3; k++) { P.push(P[a * 3 + k] + (P[b * 3 + k] - P[a * 3 + k]) * t); N.push(N[a * 3 + k] + (N[b * 3 + k] - N[a * 3 + k]) * t); }
+            const l = Math.hypot(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]) || 1;
+            for (let k = 0; k < 3; k++) N[v * 3 + k] /= l;
+            for (let k = 0; k < 2; k++) U.push((U[a * 2 + k] ?? 0) + ((U[b * 2 + k] ?? 0) - (U[a * 2 + k] ?? 0)) * t);
+            C.push(0);
+            edges.set(key, v);
+        }
+        return v;
+    };
+    const lists: [number[], number[]] = [[], []];
+    const I = part.indices;
+    for (let t = 0; t < I.length; t += 3) {
+        const v = [I[t], I[t + 1], I[t + 2]];
+        const inside = v.map(i => C[i] <= 0);
+        const nIn = inside.filter(Boolean).length;
+        if (nIn === 3 || nIn === 0) { lists[nIn ? 0 : 1].push(...v); continue; }
+        // Rotate so the odd one out comes first (keeping the winding); it gets the small triangle.
+        const odd = nIn === 1 ? inside.indexOf(true) : inside.indexOf(false);
+        const a = v[odd], b = v[(odd + 1) % 3], c = v[(odd + 2) % 3];
+        const ab = cross(a, b), ac = cross(a, c);
+        const [lone, quad] = nIn === 1 ? lists : [lists[1], lists[0]];
+        lone.push(a, ab, ac);
+        quad.push(ab, b, c, ab, c, ac);
+    }
+    const build = (name: string, idx: number[]): Part => {
+        const q = newPart(name), map = new Map<number, number>();
+        for (const v of idx) {
+            let m = map.get(v);
+            if (m === undefined) {
+                m = q.positions.length / 3; map.set(v, m);
+                q.positions.push(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]);
+                q.normals.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]);
+                q.uvs.push(U[v * 2] ?? 0, U[v * 2 + 1] ?? 0);
+            }
+            q.indices.push(m);
+        }
+        return q;
+    };
+    return [build(region, lists[0]), build(part.region, lists[1])];
+}
+
 // --- Footwear ------------------------------------------------------------------------------------
 
 export const SHOES = ["none", "sneakers", "boots", "flats", "heels"] as const;

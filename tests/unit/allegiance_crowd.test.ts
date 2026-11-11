@@ -136,9 +136,9 @@ describe("the people triangle budget", () => {
     });
 
     it("keeps a packed rally within budget, nearest people in the most detail", () => {
-        // 80 listeners within 25 m: all want full or LOD 1 detail (~20M triangles).
+        // 80 listeners within 25 m: all want full or LOD 1 detail (~12M triangles).
         const wanted = Array.from({ length: 80 }, (_, i): PersonLod => personLod(4 + i * 0.26));
-        expect(cost(wanted)).toBeGreaterThan(15_000_000);
+        expect(cost(wanted)).toBeGreaterThan(10_000_000);
         const lods = budgetLods(wanted);
         expect(cost(lods)).toBeLessThanOrEqual(DEFAULT_PEOPLE_BUDGET.triangleBudget + PERSON_TRIANGLES[2] * 80);
         expect(lods.filter(l => l === 0).length).toBe(DEFAULT_PEOPLE_BUDGET.maxFull);

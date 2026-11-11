@@ -1,4 +1,6 @@
-// The Mesha human, cached to disk just like the houses. No substitute body geometry.
+// The Mesha human, cached to disk just like the houses. No substitute body geometry; the hair is
+// Mesha's coarse shell and the clothes are painted onto the skin (strands and draped cloth cost
+// ~200k triangles a person, plus a second layer over the skin).
 import { buildHuman, DEFAULT_HUMAN, type HumanParams } from "../mesha/mesha_human";
 import { material } from "../mesha/mesha_materials";
 import type { Mesh } from "../mesha/mesha_mesh";
@@ -6,7 +8,7 @@ import { buildEquipment, type PersonLook } from "./al_models";
 import { MAT_BODY, MAT_CLOTH_BOTTOM, MAT_CLOTH_TOP, MAT_SKIN, MAT_HAIR } from "./al_shader";
 
 export const PEOPLE_NAMESPACE = "allegiance-people";
-export const PEOPLE_GENERATOR = "people.human:1-allegiance:1";
+export const PEOPLE_GENERATOR = "people.human:1-allegiance:2";
 export type PersonLod = 0 | 1 | 2;
 export interface PersonMesh { vertexData: Float32Array; indexData: Uint32Array }
 export type PeopleCache = Pick<MeshCacheAPI, "status" | "put" | "get" | "failure">;
@@ -14,7 +16,7 @@ export type PeopleCache = Pick<MeshCacheAPI, "status" | "put" | "get" | "failure
 export function humanParams(female: boolean): HumanParams {
     return { ...DEFAULT_HUMAN, masculinity: female ? DEFAULT_HUMAN.masculinity : 1,
         hair: { ...DEFAULT_HUMAN.hair, style: female ? DEFAULT_HUMAN.hair.style : "short" },
-        quality: "final" };
+        quality: "final", hairMesh: "shell", clothes: "painted" };
 }
 
 const humanKeys = new Map<string, string>();
@@ -27,7 +29,7 @@ export function humanKey(female: boolean, lod: PersonLod): string {
 
 /** Hysteresis only extends the full-detail range: entering the nearby range always restores LOD 0.
  * `detail` scales every range: below 1 trades detail for speed on slower machines (a full human
- * is ~410k triangles, LOD 1 ~65-85k, LOD 2 ~5-7k). */
+ * is ~220k triangles, LOD 1 ~34-37k, LOD 2 ~3k). */
 export function personLod(distance: number, previous?: PersonLod, detail = 1): PersonLod {
     const d = distance / Math.max(0.05, detail);
     if (d <= 18 || previous === 0 && d <= 22) return 0;
@@ -36,7 +38,7 @@ export function personLod(distance: number, previous?: PersonLod, detail = 1): P
 }
 
 /** Typical triangles per person at each LOD (allegiance_people.test.ts measures the real ones). */
-export const PERSON_TRIANGLES: readonly [number, number, number] = [415_000, 75_000, 6_000];
+export const PERSON_TRIANGLES: readonly [number, number, number] = [222_000, 36_000, 3_000];
 
 export interface PeopleBudget {
     /** Full-detail people drawn at most (nearest first). */

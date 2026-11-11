@@ -17,7 +17,7 @@
 // hair swings when the figure is moved and blows in the wind.
 
 import { type Mesh, type Vec3, type Part, newPart } from "./mesha_mesh";
-import { type SdfNode, type Box, LazyGrid, offset, intersect, custom, meshField, fieldOf } from "./mesha_sdf";
+import { type SdfNode, type Box, LazyGrid, offset, intersect, custom, meshField, fieldOf, union, sphere, roundCone } from "./mesha_sdf";
 import { type FigureHandle, eyeGeometry } from "./mesha_figure";
 import { type Simulator, type DynamicSource, attachDynamic, invertFrame, mulFrame, applyFrame, localDirection, sameFrame, addLag } from "./mesha_dynamics";
 import type { Mat4 } from "./mesha_mesh";
@@ -898,6 +898,93 @@ export function growHair(h: FigureHandle, under: SdfNode, params: Partial<HairPa
     attachDynamic(hair, hairSource(final, binds, F, () => ({ sample: (x, y, z, gg) => grid.sample(x, y, z, gg) }), spec.hold));
     parts.push(hair);
     return { mesh: { parts }, guides: guides.length, strands: binds.length, solver: final };
+}
+
+/**
+ * A cheap stand-in for the strands (for games and crowds): the style as one solid, coarse shell.
+ * The head grown by the hair's thickness and clipped to the hairline, plus what hangs below it (a
+ * curtain from the back of the head and a layer on the upper back for long cuts, a tail or a bun for
+ * tied ones). Its hidden faces lie inside the head and body, so it needs no physics and costs a few
+ * thousand triangles instead of ~160k. Brows, lashes and a beard are the same as `growHair`'s.
+ */
+export function hairShell(h: FigureHandle, params: Partial<HairParams> = {}): Mesh {
+    const o: HairParams = { ...DEFAULT_HAIR, ...params };
+    const F = headFrame(h);
+    const headField = fieldOf(h.segments.head);
+    const parts: Part[] = [];
+    if (o.lashes) parts.push(lashes(h, F, o));
+    parts.push(brows(h, F, o, headField));
+    const bd = beard(h, F, o, headField);
+    if (bd) parts.push(bd);
+    if (o.style === "none") return { parts };
+    const spec = STYLES[o.style], hu = F.hu;
+    const vol = clamp(spec.volume * 0.5 + o.volume * 0.5, 0, 1);
+    const recession = h.params.masculinity > 0.7 ? 0.004 : 0;
+    const thick = (o.style === "buzz" ? 0.003 : o.style === "afro" ? 0.04 + 0.03 * vol : 0.006 + 0.012 * vol) * hu;
+    const ANY: Box = [-50, -50, -50, 50, 50, 50];
+    const fringe = !spec.tie && o.style !== "buzz" && o.style !== "afro" ? clamp(o.bangs, 0, 1) : 0;
+    // Inside the hairline (a little below it, so the shell's rim covers the edge), with a fringe
+    // lowered toward the brows in front.
+    const scalp = custom(ANY, (x, y, z) => {
+        const q = F.local([x, y, z]);
+        let d = -0.003 - onScalp(q, recession);
+        if (fringe > 0.2 && q[2] > 0.02 && Math.abs(q[0]) < 0.065) d = Math.min(d, 0.06 - fringe * 0.035 - q[1]);
+        return d * hu;
+    });
+    // The cap thins toward the hairline so it meets the skin instead of ending in a brim. The head's
+    // field underestimates its distance away from the skin, so the grown head is also kept inside an
+    // ellipsoid round the cranium (else it sprouts a disc above the crown).
+    const t = thick / hu, headBox = offset(h.segments.head, thick).box;
+    const [ax, ay, az] = h.head.radii.map(r => r / hu * 1.06 + t);
+    const cap = custom(headBox, (x, y, z) => {
+        const q = F.local([x, y, z]);
+        const taper = 0.2 + 0.8 * clamp(onScalp(q, recession) / 0.035, 0, 1);
+        const bound = (Math.hypot(q[0] / ax, (q[1] - 0.022) / ay, (q[2] + 0.014) / az) - 1) * Math.min(ax, ay, az) * hu;
+        return Math.max(headField(x, y, z) - thick * taper, bound);
+    });
+    const nodes: SdfNode[] = [intersect(cap, scalp)];
+    if (spec.hem !== null && !spec.tie) {
+        // Hair that falls past the hairline: a curtain hanging from round the back of the head,
+        // flaring toward the hem, plus a layer lying on the upper back; all of it behind the ears so
+        // the face and the front of the shoulders stay clear.
+        const hem = spec.hem * clamp(o.length, 0.3, 2.2);
+        const [rx, rz] = [h.head.radii[0] / hu + t + 0.003, h.head.radii[2] / hu + t + 0.003];
+        const corners = [-0.3, 0.3].flatMap(x => [hem - 0.02, 0.2].flatMap(y => [-0.35, 0.05].map(z => F.P(x, y, z))));
+        const near = [0, 1, 2].map(k => Math.min(...corners.map(c => c[k]))).concat([0, 1, 2].map(k => Math.max(...corners.map(c => c[k])))) as Box;
+        const spread = (y: number) => 0.045 * clamp((-0.08 - y) / 0.22, 0, 1) + 0.03 * vol;
+        // Behind the ears at the head, falling behind the shoulders lower down.
+        const front = (y: number) => 0.015 - 0.09 * clamp((-0.05 - y) / 0.2, 0, 1);
+        nodes.push(custom(near, (x, y, z) => {
+            // Round over the top like the head, straight below its center.
+            const q = F.local([x, y, z]);
+            const w = rx + spread(q[1]);
+            const ring = (Math.hypot(q[0] / w, Math.max(0, q[1] - 0.022) / ay, (q[2] + 0.014) / rz) - 1) * Math.min(w, rz);
+            return Math.max(ring, hem - q[1], q[2] - front(q[1])) * hu;
+        }));
+        nodes.push(intersect(offset(h.segments.torso, thick), custom(near, (x, y, z) => {
+            const q = F.local([x, y, z]);
+            return Math.max(Math.abs(q[0]) - rx - spread(q[1]), hem - q[1], q[2] + 0.04) * hu;
+        })));
+    } else if (spec.tie === "pony") {
+        const tie = F.P(0, 0.035, -0.12), length = spec.length * clamp(o.length, 0.3, 2.2);
+        nodes.push(sphere(tie, 0.022 * hu), roundCone(tie, F.P(0, 0.035 - length * 0.8, -0.16), 0.02 * hu, 0.01 * hu));
+    } else if (spec.tie === "bun") {
+        nodes.push(sphere(F.P(0, 0.075, -0.125), 0.04 * hu));
+    }
+    const shell = union(nodes, 0.012 * hu);
+    // Fine round the face and hairline, coarser where hair hangs.
+    const b = shell.box, cell = 0.0055 * clamp(o.detail, 0.6, 2.5);
+    const fm = meshField(shell, { box: [b[0] - 0.01, b[1] - 0.01, b[2] - 0.01, b[3] + 0.01, b[4] + 0.01, b[5] + 0.01], size: cell * 1.6,
+        regions: [{ center: F.P(0, 0.02, 0), radius: 0.12 * hu, size: cell }], lipschitz: 1.4 });
+    if (fm.indices.length) {
+        const part = newPart("hair");
+        part.positions = fm.positions;
+        part.normals = fm.normals;
+        part.uvs = new Array((fm.positions.length / 3) * 2).fill(0);
+        part.indices = fm.indices;
+        parts.push(part);
+    }
+    return { parts };
 }
 
 function hairSource(base: HairSolver, binds: Binding[], F: HeadFrame, collider: () => HairCollider, hold: number): DynamicSource {
