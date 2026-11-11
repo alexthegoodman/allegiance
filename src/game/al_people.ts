@@ -1,6 +1,8 @@
 // The Mesha human, cached to disk just like the houses. No substitute body geometry; the hair is
 // Mesha's coarse shell and the clothes are painted onto the skin (strands and draped cloth cost
-// ~200k triangles a person, plus a second layer over the skin).
+// ~200k triangles a person, plus a second layer over the skin), and the body surface is decimated
+// to half a millimeter (slimHuman), which drops ~80% of its triangles.
+import { MeshoptSimplifier } from "meshoptimizer";
 import { buildHuman, DEFAULT_HUMAN, type HumanParams } from "../mesha/mesha_human";
 import { material } from "../mesha/mesha_materials";
 import type { Mesh } from "../mesha/mesha_mesh";
@@ -8,7 +10,7 @@ import { buildEquipment, type PersonLook } from "./al_models";
 import { MAT_BODY, MAT_CLOTH_BOTTOM, MAT_CLOTH_TOP, MAT_SKIN, MAT_HAIR } from "./al_shader";
 
 export const PEOPLE_NAMESPACE = "allegiance-people";
-export const PEOPLE_GENERATOR = "people.human:1-allegiance:2";
+export const PEOPLE_GENERATOR = "people.human:1-allegiance:3";
 export type PersonLod = 0 | 1 | 2;
 export interface PersonMesh { vertexData: Float32Array; indexData: Uint32Array }
 export type PeopleCache = Pick<MeshCacheAPI, "status" | "put" | "get" | "failure">;
@@ -29,7 +31,7 @@ export function humanKey(female: boolean, lod: PersonLod): string {
 
 /** Hysteresis only extends the full-detail range: entering the nearby range always restores LOD 0.
  * `detail` scales every range: below 1 trades detail for speed on slower machines (a full human
- * is ~220k triangles, LOD 1 ~34-37k, LOD 2 ~3k). */
+ * is ~70-74k triangles, LOD 1 ~22-26k, LOD 2 ~3k). */
 export function personLod(distance: number, previous?: PersonLod, detail = 1): PersonLod {
     const d = distance / Math.max(0.05, detail);
     if (d <= 18 || previous === 0 && d <= 22) return 0;
@@ -38,7 +40,7 @@ export function personLod(distance: number, previous?: PersonLod, detail = 1): P
 }
 
 /** Typical triangles per person at each LOD (allegiance_people.test.ts measures the real ones). */
-export const PERSON_TRIANGLES: readonly [number, number, number] = [222_000, 36_000, 3_000];
+export const PERSON_TRIANGLES: readonly [number, number, number] = [72_000, 24_000, 2_800];
 
 export interface PeopleBudget {
     /** Full-detail people drawn at most (nearest first). */
@@ -98,6 +100,40 @@ export function packHuman(mesh: Mesh): PersonMesh {
     return { vertexData, indexData };
 }
 
+/** Parts slimHuman decimates: the meshed body surface (skin, and the clothes painted onto it). */
+const SLIM_REGIONS = new Set(["skin", "top", "bottom"]);
+/** Largest deviation slimHuman allows from the evaluated surface (m). */
+export const SLIM_ERROR = 0.0005;
+
+/**
+ * Decimates the body surface: the figure is meshed at an even few millimeters all over, which flat
+ * stretches of back and thigh don't need. meshoptimizer collapses edges while the surface stays within
+ * SLIM_ERROR, weighing the smooth normals too; every kept vertex keeps its position and normal, and part
+ * borders (the painted hems, lips, nails) are locked, so the parts still meet without cracks. Needs
+ * MeshoptSimplifier.ready.
+ */
+export function slimHuman(mesh: Mesh, error = SLIM_ERROR): Mesh {
+    return { parts: mesh.parts.map(p => {
+        if (!SLIM_REGIONS.has(p.region) || !p.indices.length) return p;
+        const [kept] = MeshoptSimplifier.simplifyWithAttributes(new Uint32Array(p.indices), new Float32Array(p.positions), 3,
+            new Float32Array(p.normals), 3, [0.5, 0.5, 0.5], null, 0, error, ["LockBorder", "ErrorAbsolute"]);
+        // Only the vertices still in use.
+        const q = { ...p, positions: [] as number[], normals: [] as number[], uvs: [] as number[], indices: [] as number[] };
+        const map = new Map<number, number>();
+        for (const v of kept) {
+            let m = map.get(v);
+            if (m === undefined) {
+                m = map.size; map.set(v, m);
+                q.positions.push(p.positions[v * 3], p.positions[v * 3 + 1], p.positions[v * 3 + 2]);
+                q.normals.push(p.normals[v * 3], p.normals[v * 3 + 1], p.normals[v * 3 + 2]);
+                q.uvs.push(p.uvs[v * 2] ?? 0, p.uvs[v * 2 + 1] ?? 0);
+            }
+            q.indices.push(m);
+        }
+        return q;
+    }) };
+}
+
 /** Distant LOD of the same human. Weld only within one material and limb; retain smooth normals.
  * The building simplifier cannot be used here: it discards per-vertex animation attributes. */
 export function coarseHuman(mesh: PersonMesh, cell = 0.045): PersonMesh {
@@ -123,10 +159,15 @@ export function coarseHuman(mesh: PersonMesh, cell = 0.045): PersonMesh {
 export class PeopleMeshes {
     generated = 0;
     private prepared = false;
-    constructor(private cache: PeopleCache, private generate = (female: boolean) => packHuman(buildHuman(humanParams(female)))) {}
+    /** The default generator decimates with meshoptimizer (WebAssembly): set once it has loaded. */
+    private simplifier = false;
+    constructor(private cache: PeopleCache, private generate?: (female: boolean) => PersonMesh) {
+        if (!generate) MeshoptSimplifier.ready.then(() => { this.simplifier = true; });
+    }
     /** Called only on the loading screen. At most one costly Mesha evaluation per frame. */
     prepare(): boolean {
         if (this.prepared) return true;
+        const generate = this.generate ?? ((female: boolean) => packHuman(slimHuman(buildHuman(humanParams(female)))));
         for (const female of [false, true]) for (const lod of [0, 1, 2] as const) {
             const key = humanKey(female, lod), status = this.cache.status(PEOPLE_NAMESPACE, key);
             if (status === "ready") continue;
@@ -135,7 +176,8 @@ export class PeopleMeshes {
             if (status === "pending") return false;
             const source = lod === 0 ? null : this.cache.get(PEOPLE_NAMESPACE, humanKey(female, 0));
             if (lod !== 0 && !source) return false;
-            const mesh = lod === 0 ? this.generate(female) : coarseHuman(source!, lod === 1 ? 0.012 : 0.045);
+            if (lod === 0 && !this.generate && !this.simplifier) return false;
+            const mesh = lod === 0 ? generate(female) : coarseHuman(source!, lod === 1 ? 0.012 : 0.045);
             if (lod === 0) this.generated++;
             this.cache.put(PEOPLE_NAMESPACE, key, { ...mesh, meta: { generator: PEOPLE_GENERATOR, female, lod } }, { background: true });
             return false;

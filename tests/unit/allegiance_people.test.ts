@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { MeshoptSimplifier } from "meshoptimizer";
 import { buildHuman } from "../../src/mesha/mesha_human";
-import { PeopleMeshes, PEOPLE_NAMESPACE, humanKey, humanParams, packHuman, coarseHuman, personLod, type PersonMesh, type PeopleCache } from "../../src/game/al_people";
+import { PeopleMeshes, PEOPLE_NAMESPACE, humanKey, humanParams, packHuman, coarseHuman, slimHuman, SLIM_ERROR, personLod, type PersonMesh, type PeopleCache } from "../../src/game/al_people";
 import { MAT_CLOTH_TOP, MAT_CLOTH_BOTTOM, MAT_SKIN, MAT_HAIR } from "../../src/game/al_shader";
 
 function cacheFixture() {
@@ -46,6 +47,30 @@ describe("Allegiance's Mesha humans", () => {
             expect(distant.indexData.length).toBeGreaterThan(300);
             expect(Array.from(distant.vertexData).every(Number.isFinite)).toBe(true);
             console.log(`${female ? "female" : "male"} triangles: ${packed.indexData.length / 3}, ${draft.indexData.length / 3}, ${distant.indexData.length / 3}`);
+        }
+    });
+
+    it("decimates the body surface by more than half, keeping its vertices, normals and every other part", { timeout: 180_000 }, async () => {
+        await MeshoptSimplifier.ready;
+        const body = new Set(["skin", "top", "bottom"]);
+        for (const female of [false, true]) {
+            const source = buildHuman(humanParams(female));
+            const slim = slimHuman(source);
+            expect(slim.parts.map(p => p.region)).toEqual(source.parts.map(p => p.region));
+            let before = 0, after = 0;
+            source.parts.forEach((p, i) => {
+                const q = slim.parts[i];
+                if (!body.has(p.region)) { expect(q).toBe(p); return; }
+                before += p.indices.length / 3; after += q.indices.length / 3;
+                // Every kept vertex is one of the evaluated surface's, with its own normal.
+                const original = new Map<string, string>();
+                for (let v = 0; v < p.positions.length / 3; v++) original.set(p.positions.slice(v * 3, v * 3 + 3).join(), p.normals.slice(v * 3, v * 3 + 3).join());
+                for (let v = 0; v < q.positions.length / 3; v++) expect(original.get(q.positions.slice(v * 3, v * 3 + 3).join())).toBe(q.normals.slice(v * 3, v * 3 + 3).join());
+                expect(Math.max(...q.indices)).toBe(q.positions.length / 3 - 1);
+            });
+            expect(after).toBeLessThan(before * 0.5);
+            const packed = packHuman(slim);
+            console.log(`${female ? "female" : "male"} body ${before} -> ${after} (error ${SLIM_ERROR} m); LODs ${packed.indexData.length / 3}, ${coarseHuman(packed, 0.012).indexData.length / 3}, ${coarseHuman(packed).indexData.length / 3}`);
         }
     });
 
